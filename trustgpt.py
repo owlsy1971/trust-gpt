@@ -1,17 +1,19 @@
-
 import discord
 import openai
 import os
 from discord.ext import commands
 
+# Environment variables for security
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
+# Enable required intents
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# TrustGPT prompt
 TRUST_PROMPT = """
 You are TrustGPT, a private equity-based assistant serving inside a Discord community focused on trust law, estate privacy, and asset protection.
 You do NOT give legal advice. You only operate in the realm of private equity, honour, and trust administration.
@@ -41,25 +43,12 @@ Always distinguish between the man (living) and the legal fiction (NAME).
 Always prioritise protection of property, name, and intent.
 """
 
-faq_links = {
-    "benefits of a trust": "https://discord.com/channels/YOURSERVERID/YOURCHANNELID/MESSAGEID1",
-    "how does it benefit me": "https://discord.com/channels/YOURSERVERID/YOURCHANNELID/MESSAGEID2",
-    "put home in a trust": "https://discord.com/channels/YOURSERVERID/YOURCHANNELID/MESSAGEID3",
-    "enrolled dpoll benefits": "https://discord.com/channels/YOURSERVERID/YOURCHANNELID/MESSAGEID4",
-    "private registered trademark": "https://discord.com/channels/YOURSERVERID/YOURCHANNELID/MESSAGEID5"
-}
-
 @bot.event
 async def on_ready():
     print(f"🤖 TrustGPT is live as {bot.user.name}")
 
 @bot.command(name="ask")
 async def ask_trust(ctx, *, question):
-    for keyword, link in faq_links.items():
-        if keyword in question.lower():
-            await ctx.send(f"This has already been answered here: {link}")
-            return
-
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
@@ -67,7 +56,7 @@ async def ask_trust(ctx, *, question):
                 {"role": "system", "content": TRUST_PROMPT},
                 {"role": "user", "content": question}
             ],
-            max_tokens=500,
+            max_tokens=600,
             temperature=0.7
         )
         answer = response['choices'][0]['message']['content']
@@ -76,3 +65,4 @@ async def ask_trust(ctx, *, question):
         await ctx.send(f"Error: {e}")
 
 bot.run(DISCORD_TOKEN)
+
