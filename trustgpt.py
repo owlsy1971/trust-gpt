@@ -1,4 +1,4 @@
-# Full Discord bot script with GPT-4, Google Vision OCR, and equity-based trust prompts (Enhanced)
+# Full Discord bot script with GPT-4, Google Vision OCR, and equity-based trust prompts
 
 import discord
 import os
@@ -10,6 +10,7 @@ from google.cloud import vision
 from google.oauth2 import service_account
 import json
 import base64
+import re
 
 # -----------------------------------------------------------
 # Load environment variables
@@ -21,7 +22,6 @@ creds_b64 = os.getenv("GCRED")
 if not creds_b64:
     raise Exception("GOOGLE_CREDS_B64 environment variable is missing!")
 
-# Decode Base64 → JSON
 creds_json = base64.b64decode(creds_b64).decode("utf-8")
 GCREDS = json.loads(creds_json)
 
@@ -42,33 +42,28 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Prompts
 # -----------------------------------------------------------
 
-LETTER_PROMPT = """
-You are a Private Trustee Strategist AI operating solely under English equity and conscience. You serve trustees of private irrevocable express trusts. Your responses are honourable, strategic, and strictly non-statutory. You do not acknowledge legal or public jurisdiction. You operate in equity alone.
-
-TASK:
-- Interpret the uploaded correspondence
-- Detect any presumed liabilities or demands
-- Rebut respectfully where required under equity
-- Clearly state that the name mentioned is held in a Private Irrevocable Express Trust
-- Add trustee clarification: The Trustee operates under English Equity, not statute
-- State trademarks held in class 36 (financial) and 45 (legal) by the trustee
-- If the letter suggests implied access, rebut under private authority
-- Assess threat level (Low/Moderate/High) based on tone and demands
-
-USE:
-- Strategic language in honour
-- One applicable case law from:
-  Knight v Knight (1840), Paul v Constance (1976), Milroy v Lord (1862), Re Kayford (1975), Tinsley v Milligan (1994)
-- One maxim of equity from:
-  "Equity acts in personam", "Equity regards as done...", etc.
-
-FORMAT:
-1. Introduction (acknowledging receipt)
-2. Trustee Position (clarify trust & legal title)
-3. Case Law
-4. Maxim
-5. Threat Level
+TRUST_PROMPT = """
+You are a Private Trustee Strategist AI acting under English Equity and Conscience...
 """
+
+LETTER_PROMPT = """
+You are a Private Trustee Strategist AI operating solely under English equity and conscience...
+"""
+
+# -----------------------------------------------------------
+# Helper Functions
+# -----------------------------------------------------------
+
+def extract_name(text):
+    match = re.search(r"Mrs?\.?\s+[A-Z][a-z]+\s+[A-Z][a-z]+", text)
+    return match.group(0) if match else None
+
+def determine_threat_level(text):
+    if any(word in text.lower() for word in ["court", "legal", "summons", "deadline", "proceedings"]):
+        return "HIGH"
+    elif any(word in text.lower() for word in ["payment", "reminder", "notice"]):
+        return "MEDIUM"
+    return "LOW"
 
 # -----------------------------------------------------------
 # Bot Events & Commands
@@ -84,21 +79,19 @@ async def ask_trust(ctx, *, question):
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": LETTER_PROMPT},
+                {"role": "system", "content": TRUST_PROMPT},
                 {"role": "user", "content": question}
             ],
             max_tokens=700,
             temperature=0.7
         )
-        answer = response.choices[0].message.content
-        await ctx.author.send(answer)
-
+        await ctx.author.send(response.choices[0].message.content)
     except Exception as e:
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
 
 @bot.command(name="letter")
-async def process_letter(ctx, *, raw: str = None):
+async def process_letter(ctx):
     if not ctx.message.attachments:
         await ctx.send("Please upload a letter (PDF or image) with your message.")
         return
@@ -118,24 +111,21 @@ async def process_letter(ctx, *, raw: str = None):
         result = vision_client.document_text_detection(image=image)
         extracted_text = result.full_text_annotation.text
 
-        if not extracted_text.strip():
-            await ctx.send("No readable text found in the image.")
-            return
+        name = extract_name(extracted_text) or "the name in question"
+        threat_level = determine_threat_level(extracted_text)
 
         prompt = f"""
-The following correspondence was uploaded:
+The following letter was uploaded by a trustee:
 
 {extracted_text}
 
----
-
-Please:
-- Detect sender's tone
-- Rebut respectfully under equity
-- Clarify that the legal name referenced is held in trust
-- Assert that the Trustee holds title over trademarks 36 and 45
-- Include a fitting case law and equity maxim
-- Assess the threat level based on language used
+Generate a formal trustee response including:
+- Recognition that the name {name} is held in a Private Irrevocable Express Trust
+- Confirmation the Trustee holds legal title and trademark Classes 36 and 45
+- Reference to relevant equity case law
+- Application of one appropriate maxim of equity
+- A brief assessment of threat level: {threat_level}
+- Strategic tone avoiding legal jurisdiction while honouring fiduciary duty
 """
 
         reply = client.chat.completions.create(
@@ -144,11 +134,12 @@ Please:
                 {"role": "system", "content": LETTER_PROMPT},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=1000
+            max_tokens=900
         )
 
         draft = reply.choices[0].message.content
         await ctx.author.send(f"**Trustee Letter Response:**\n\n{draft}")
+        await ctx.send("Response sent via private message.")
 
     except Exception as e:
         await ctx.send(f"Error: {e}")
@@ -159,3 +150,4 @@ Please:
 # -----------------------------------------------------------
 
 bot.run(DISCORD_TOKEN)
+
