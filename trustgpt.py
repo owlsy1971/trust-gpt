@@ -13,7 +13,7 @@ import json
 # Load environment variables
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GCREDS = json.loads(os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
+GCREDS = json.loads(os.getenv("GOOGLE_CREDS"))
 
 # Initialize OpenAI and Vision clients
 client = OpenAI(api_key=OPENAI_API_KEY)
