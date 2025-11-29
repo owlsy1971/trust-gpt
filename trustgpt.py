@@ -1,11 +1,10 @@
-# Full Discord bot script with GPT-4, Google Vision OCR, and equity-based trust prompts
+# Upgraded Discord bot with trustee logic, equity-based responses, threat detection, and full legal strategy formatting
 
 import discord
 import os
 from discord.ext import commands
 from openai import OpenAI
 import aiohttp
-import io
 from google.cloud import vision
 from google.oauth2 import service_account
 import json
@@ -13,38 +12,28 @@ import base64
 import re
 from datetime import datetime
 
-# -----------------------------------------------------------
 # Load environment variables
-# -----------------------------------------------------------
-
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Load Google Vision creds from Base64 (Railway-safe)
+# Load and decode Google Cloud credentials from base64
 creds_b64 = os.getenv("GCRED")
 if not creds_b64:
     raise Exception("GOOGLE_CREDS_B64 environment variable is missing!")
-
-# Decode Base64 → JSON
 creds_json = base64.b64decode(creds_b64).decode("utf-8")
 GCREDS = json.loads(creds_json)
 
-# Initialize OpenAI and Vision clients
+# Initialize OpenAI and Google Vision clients
 client = OpenAI(api_key=OPENAI_API_KEY)
 vision_creds = service_account.Credentials.from_service_account_info(GCREDS)
 vision_client = vision.ImageAnnotatorClient(credentials=vision_creds)
 
-# -----------------------------------------------------------
-# Discord bot setup
-# -----------------------------------------------------------
-
+# Bot setup
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# -----------------------------------------------------------
-# Global user tracking state
-# -----------------------------------------------------------
+# Tracking state per user
 user_case_rotation = {}
 case_laws = [
     "Knight v Knight (1840) - The Three Certainties",
@@ -60,12 +49,9 @@ maxims = [
     "A trustee must act in good conscience"
 ]
 
-# -----------------------------------------------------------
-# Prompt templates
-# -----------------------------------------------------------
-
+# System prompt for OpenAI
 LETTER_PROMPT_TEMPLATE = """
-You are a Private Trustee Strategist AI operating solely under English equity and conscience. You serve trustees of private irrevocable express trusts. Your responses are honourable, strategic, and strictly non-statutory. You do not acknowledge legal or public jurisdiction. You operate in equity alone.
+You are a Private Trustee Strategist AI operating solely under English equity and conscience. You serve trustees of private irrevocable express trusts. Your responses are honourable, strategic, and strictly non-statutory.
 
 PURPOSE:
 - Read uploaded correspondence
@@ -83,19 +69,16 @@ REPLY FORMAT:
 1. Introduction
 2. Trustee Position
 3. Case Law
-4. Trademark Clause (if applicable)
-5. Closing maxim
-6. Threat Level
+4. Trademarks (if applicable)
+5. Right of Access (if applicable)
+6. Maxim
+7. Threat Level
 
 COMMUNICATION:
 - Never mention legal terms or court systems
 - Never say "I am an AI"
 - Respond as a strategist in private equity
 """
-
-# -----------------------------------------------------------
-# Bot Events & Commands
-# -----------------------------------------------------------
 
 @bot.event
 async def on_ready():
@@ -113,9 +96,7 @@ async def ask_trust(ctx, *, question):
             max_tokens=700,
             temperature=0.7
         )
-        answer = response.choices[0].message.content
-        await ctx.author.send(answer)
-
+        await ctx.author.send(response.choices[0].message.content)
     except Exception as e:
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
@@ -130,7 +111,6 @@ async def process_letter(ctx):
     await ctx.send("Reading your uploaded letter...")
 
     try:
-        # Download file
         async with aiohttp.ClientSession() as session:
             async with session.get(attachment.url) as resp:
                 if resp.status != 200:
@@ -138,37 +118,23 @@ async def process_letter(ctx):
                     return
                 data = await resp.read()
 
-        # OCR
         image = vision.Image(content=data)
         result = vision_client.document_text_detection(image=image)
         extracted_text = result.full_text_annotation.text
 
-        # Extract name from letter (basic detection)
-        name_match = re.search(r"(?i)(Mr\.?|Mrs\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+\s[A-Z][a-z]+)", extracted_text)
+        name_match = re.search(r"(?i)(Mr\.?|Mrs\.?|Ms\.?|Miss|Dr\.?)\s+([A-Z][a-z]+\s[A-Z][a-z]+)", extracted_text)
         full_name = name_match.group(0) if name_match else "[Name Unknown]"
 
-        # Case law and maxim rotation
         user_id = str(ctx.author.id)
         index = user_case_rotation.get(user_id, 0)
         case_law = case_laws[index % len(case_laws)]
         maxim = maxims[index % len(maxims)]
         user_case_rotation[user_id] = index + 1
 
-        # Trademark clause (included by default)
-        trademark_clause = f"Be advised that the identifiers and designations in your correspondence, including but not limited to the name {full_name}, are protected under intellectual property rights within Classes 36 and 45. Any unauthorized reference or commercial use is prohibited."
+        trademark_clause = f"The name {full_name} is protected by Trademarks Classes 36 and 45. Any unauthorized use is denied."
+        access_clause = "The implied right of access is revoked. Your presence or communication is not consented to by the Trust."
 
-        # Final prompt
-        composed_prompt = f"""Letter received:
----
-{extracted_text}
-
-Trustee Statement:
-The name {full_name} is held in a Private Irrevocable Express Trust. All liability is disclaimed under English equity. Respond appropriately.
-
-Include the following in response:
-- Case Law: {case_law}
-- Maxim: {maxim}
-- {trademark_clause}"
+        composed_prompt = f"""Letter received:\n---\n{extracted_text}\n\nTrustee Statement:\nThe name {full_name} is held in a Private Irrevocable Express Trust. All liabilities and claims are rebutted in equity.\n\nInstructions:\n- Case Law: {case_law}\n- Maxim: {maxim}\n- {trademark_clause}\n- {access_clause}"""
 
         reply = client.chat.completions.create(
             model="gpt-4",
@@ -180,8 +146,6 @@ Include the following in response:
         )
 
         draft = reply.choices[0].message.content
-
-        # If too long for Discord, send as file
         if len(draft) > 1900:
             filename = f"trust_letter_{datetime.utcnow().isoformat()}.txt"
             with open(filename, "w", encoding="utf-8") as f:
@@ -194,11 +158,5 @@ Include the following in response:
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
 
-# -----------------------------------------------------------
-# Run the bot
-# -----------------------------------------------------------
-
 bot.run(DISCORD_TOKEN)
-
-
 
