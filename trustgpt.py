@@ -1,10 +1,11 @@
-# Upgraded Discord bot with trustee logic, equity-based responses, threat detection, and full legal strategy formatting
+# Full Discord bot script with GPT-4, Google Vision OCR, and equity-based trust prompts
 
 import discord
 import os
 from discord.ext import commands
 from openai import OpenAI
 import aiohttp
+import io
 from google.cloud import vision
 from google.oauth2 import service_account
 import json
@@ -12,28 +13,38 @@ import base64
 import re
 from datetime import datetime
 
+# -----------------------------------------------------------
 # Load environment variables
+# -----------------------------------------------------------
+
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Load and decode Google Cloud credentials from base64
+# Load Google Vision creds from Base64 (Railway-safe)
 creds_b64 = os.getenv("GCRED")
 if not creds_b64:
     raise Exception("GOOGLE_CREDS_B64 environment variable is missing!")
+
+# Decode Base64 → JSON
 creds_json = base64.b64decode(creds_b64).decode("utf-8")
 GCREDS = json.loads(creds_json)
 
-# Initialize OpenAI and Google Vision clients
+# Initialize OpenAI and Vision clients
 client = OpenAI(api_key=OPENAI_API_KEY)
 vision_creds = service_account.Credentials.from_service_account_info(GCREDS)
 vision_client = vision.ImageAnnotatorClient(credentials=vision_creds)
 
-# Bot setup
+# -----------------------------------------------------------
+# Discord bot setup
+# -----------------------------------------------------------
+
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Tracking state per user
+# -----------------------------------------------------------
+# Global user tracking state
+# -----------------------------------------------------------
 user_case_rotation = {}
 case_laws = [
     "Knight v Knight (1840) - The Three Certainties",
@@ -49,9 +60,12 @@ maxims = [
     "A trustee must act in good conscience"
 ]
 
-# System prompt for OpenAI
+# -----------------------------------------------------------
+# Prompt templates
+# -----------------------------------------------------------
+
 LETTER_PROMPT_TEMPLATE = """
-You are a Private Trustee Strategist AI operating solely under English equity and conscience. You serve trustees of private irrevocable express trusts. Your responses are honourable, strategic, and strictly non-statutory.
+You are a Private Trustee Strategist AI operating solely under English equity and conscience. You serve trustees of private irrevocable express trusts. Your responses are honourable, strategic, and strictly non-statutory. You do not acknowledge legal or public jurisdiction. You operate in equity alone.
 
 PURPOSE:
 - Read uploaded correspondence
@@ -69,9 +83,9 @@ REPLY FORMAT:
 1. Introduction
 2. Trustee Position
 3. Case Law
-4. Trademarks (if applicable)
-5. Right of Access (if applicable)
-6. Maxim
+4. Trademark Clause (if applicable)
+5. Legal Title Declaration (new)
+6. Closing maxim
 7. Threat Level
 
 COMMUNICATION:
@@ -79,6 +93,10 @@ COMMUNICATION:
 - Never say "I am an AI"
 - Respond as a strategist in private equity
 """
+
+# -----------------------------------------------------------
+# Bot Events & Commands
+# -----------------------------------------------------------
 
 @bot.event
 async def on_ready():
@@ -96,7 +114,9 @@ async def ask_trust(ctx, *, question):
             max_tokens=700,
             temperature=0.7
         )
-        await ctx.author.send(response.choices[0].message.content)
+        answer = response.choices[0].message.content
+        await ctx.author.send(answer)
+
     except Exception as e:
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
@@ -122,7 +142,7 @@ async def process_letter(ctx):
         result = vision_client.document_text_detection(image=image)
         extracted_text = result.full_text_annotation.text
 
-        name_match = re.search(r"(?i)(Mr\.?|Mrs\.?|Ms\.?|Miss|Dr\.?)\s+([A-Z][a-z]+\s[A-Z][a-z]+)", extracted_text)
+        name_match = re.search(r"(?i)(Mr\.?|Mrs\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+\s[A-Z][a-z]+)", extracted_text)
         full_name = name_match.group(0) if name_match else "[Name Unknown]"
 
         user_id = str(ctx.author.id)
@@ -131,10 +151,23 @@ async def process_letter(ctx):
         maxim = maxims[index % len(maxims)]
         user_case_rotation[user_id] = index + 1
 
-        trademark_clause = f"The name {full_name} is protected by Trademarks Classes 36 and 45. Any unauthorized use is denied."
-        access_clause = "The implied right of access is revoked. Your presence or communication is not consented to by the Trust."
+        trademark_clause = f"Be advised that the identifiers and designations in your correspondence, including but not limited to the name {full_name}, are protected under intellectual property rights within Classes 36 and 45. Any unauthorized reference or commercial use is prohibited."
 
-        composed_prompt = f"""Letter received:\n---\n{extracted_text}\n\nTrustee Statement:\nThe name {full_name} is held in a Private Irrevocable Express Trust. All liabilities and claims are rebutted in equity.\n\nInstructions:\n- Case Law: {case_law}\n- Maxim: {maxim}\n- {trademark_clause}\n- {access_clause}"""
+        legal_title_statement = f"The legal title to the name '{full_name}' is held by the trustee. All fiduciary functions and liabilities are executed in private equity, not subject to public presumption or statutory interpretation."
+
+        composed_prompt = f"""Letter received:
+---
+{extracted_text}
+
+Trustee Statement:
+The name {full_name} is held in a Private Irrevocable Express Trust. All liability is disclaimed under English equity. Respond appropriately.
+
+Include the following in response:
+- Case Law: {case_law}
+- Maxim: {maxim}
+- {trademark_clause}
+- {legal_title_statement}
+"""
 
         reply = client.chat.completions.create(
             model="gpt-4",
@@ -146,6 +179,7 @@ async def process_letter(ctx):
         )
 
         draft = reply.choices[0].message.content
+
         if len(draft) > 1900:
             filename = f"trust_letter_{datetime.utcnow().isoformat()}.txt"
             with open(filename, "w", encoding="utf-8") as f:
@@ -158,5 +192,10 @@ async def process_letter(ctx):
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
 
+# -----------------------------------------------------------
+# Run the bot
+# -----------------------------------------------------------
+
 bot.run(DISCORD_TOKEN)
+
 
