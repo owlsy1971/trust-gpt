@@ -2,9 +2,6 @@
 
 import discord
 import os
-print("BRANCH:", os.getenv("RAILWAY_GIT_BRANCH"))
-print("COMMIT:", os.getenv("RAILWAY_GIT_COMMIT_SHA"))
-
 from discord.ext import commands
 from openai import OpenAI
 import aiohttp
