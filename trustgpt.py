@@ -1,11 +1,12 @@
 # Full Discord bot script with GPT-4, Google Vision OCR, and equity-based trust prompts
+# Includes: Auto-Tone Classification, Threat Scoring, Correspondence Type Detection,
+# Private Trustee Response Generation, Always DM Output.
 
 import discord
 import os
 from discord.ext import commands
 from openai import OpenAI
 import aiohttp
-import io
 from google.cloud import vision
 from google.oauth2 import service_account
 import json
@@ -18,16 +19,13 @@ import base64
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Load Google Vision creds from Base64 (Railway-safe)
 creds_b64 = os.getenv("GCRED")
 if not creds_b64:
     raise Exception("GOOGLE_CREDS_B64 environment variable is missing!")
 
-# Decode Base64 → JSON
 creds_json = base64.b64decode(creds_b64).decode("utf-8")
 GCREDS = json.loads(creds_json)
 
-# Initialize OpenAI and Vision clients
 client = OpenAI(api_key=OPENAI_API_KEY)
 vision_creds = service_account.Credentials.from_service_account_info(GCREDS)
 vision_client = vision.ImageAnnotatorClient(credentials=vision_creds)
@@ -38,158 +36,216 @@ vision_client = vision.ImageAnnotatorClient(credentials=vision_creds)
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # -----------------------------------------------------------
-# Prompt for typed questions (!ask)
+# CLASSIFIER PROMPTS
 # -----------------------------------------------------------
 
-TRUST_PROMPT = """
-You are a Private Trustee Strategist AI acting under English Equity and Conscience. You guide trustees of private irrevocable express trusts in their fiduciary roles, never offering legal or statutory advice.
+TONE_CLASSIFIER = """
+Classify this letter by severity only.
 
-PURPOSE:
-- Advise on trust structure, asset protection, private contract
-- Protect trust res, beneficiaries, and estate privacy
-- Maintain clear boundaries from statute, public regulation, and courts
+Categories:
+ADMIN — harmless information, statements, admin updates
+REQUEST — asking for something, requesting action or contact
+DEMAND — overdue, payment demand, firm tone, no threat
+ESCALATION — final notice, "we may take action", transfer warning
+THREAT — mentions enforcement, visits, recovery teams, or strong pressure
 
-JURISDICTION:
-- Equity and Conscience
-- Maxims of Equity
-- Private Trusts only
-- No legal advice, no HMRC/IRS, no litigation or procedure
+Reply with ONE word: ADMIN, REQUEST, DEMAND, ESCALATION, THREAT.
+"""
 
-KNOWLEDGE:
+TYPE_CLASSIFIER = """
+Identify the type of correspondence:
+
+Options:
+COUNCIL_TAX
+ENERGY
+WATER
+DEBT_COLLECTION
+SOLICITOR
+BANK_FINANCE
+LOCAL_AUTHORITY
+GENERAL
+
+Choose ONLY one.
+"""
+
+THREAT_SCORE_CLASSIFIER = """
+Score the severity of this letter on a scale of 0–100:
+
+0 = harmless admin letter  
+100 = severe aggressive threat  
+
+Return only a number.
+"""
+
+# -----------------------------------------------------------
+# UNIVERSAL TRUSTEE LETTER PROMPT WITH MODE C SUPPORT
+# -----------------------------------------------------------
+
+LETTER_PROMPT = """
+You are a Private Trustee Strategist operating under English Equity and Conscience.
+You respond ONLY in private equity, never legal, never statutory, never regulatory. 
+You act calmly, honourably, and in good conscience. No legal terminology, no legal 
+rights, no consequences, no demands, no refusal, no enforcement language.
+
+You will be given:
+- The extracted letter text
+- The detected severity category
+- The detected letter type
+- A threat score (0–100)
+
+Your response must adapt:
+
+TONE MODES:
+ADMIN (0–20): Gentle, courteous clarification.  
+REQUEST (20–40): Clear boundary, request for proper constitution.  
+DEMAND (40–60): Firm non-recognition of obligation without evidence.  
+ESCALATION (60–80): Strong firm position, request strict proof + authority.  
+THREAT (80–100): Activate MODE C — Firm Trustee Position.  
+    - Strong boundaries  
+    - Honourable  
+    - Calm  
+    - No acceptance of obligation  
+    - No legal advice  
+    - Still non-adversarial  
+    - Protect trust res and beneficiaries  
+
+Apply exactly ONE equity case law:
 - Knight v Knight (1840)
 - Paul v Constance (1976)
 - Milroy v Lord (1862)
 - Re Kayford (1975)
 - Tinsley v Milligan (1994)
 
-COMMUNICATION:
-- Be brief, clear, strategic
-- Use case law when helpful
-- Speak as a strategist, not an AI
-- Never defer to legal systems or public compliance
+Follow this structure:
 
-Maxims:
-- "Equity regards as done that which ought to be done."
-- "He who seeks equity must do equity."
-- "Equity acts in personam."
-"""
+1. Introduction  
+   - Acknowledge receipt in honour  
+   - Maintain trustee capacity
 
-# -----------------------------------------------------------
-# Prompt for uploaded letters (!letter)
-# -----------------------------------------------------------
+2. Trustee Position  
+   - Adapt strength using tone mode  
+   - Never accept obligation unless properly constituted  
+   - Request proof, authority, origin, documentation  
+   - Maintain private jurisdiction  
+   - Avoid joinder
 
-LETTER_PROMPT = """
-You are a Private Trustee Strategist AI operating solely under English equity and conscience. You serve trustees of private irrevocable express trusts. Your responses are honourable, strategic, and strictly non-statutory. You do not acknowledge legal or public jurisdiction. You operate in equity alone.
+3. Case Law (one only)  
+   - Apply it briefly and relevantly
 
-PURPOSE:
-- Read uploaded correspondence
-- Protect trust res and estate privacy
-- Respond in honour with case law support
-- Maintain fiduciary boundaries
-
-JURISDICTION:
-- English Equity and Chancery tradition
-- Maxims of Equity
-- Private contractual law
-- No public regulation, compliance or litigation
-
-CASE LAW (include 1 per reply):
-- Knight v Knight (1840) - The Three Certainties
-- Paul v Constance (1976) - Intention over formality
-- Milroy v Lord (1862) - Constitution of Trusts
-- Re Kayford (1975) - Separation of funds
-- Tinsley v Milligan (1994) - Resulting trust despite illegality
-
-REPLY FORMAT:
-1. Introduction
-2. Trustee Position
-3. Case Law
-4. Closing maxim (rotate as appropriate):
-   - Equity will not assist a volunteer
-   - Equity acts in personam
-   - Equity looks to intent, not form
+4. Closing Maxim  
+   - Equity will not assist a volunteer  
+   - Equity acts in personam  
+   - Equity looks to intent, not form  
    - A trustee must act in good conscience
 
-COMMUNICATION:
-- Never mention legal terms or court systems
-- Never say "I am an AI"
-- Respond as a strategist in private equity
+Never mention:
+- Law
+- Statutes
+- Courts
+- Enforcement
+- Public rights
+- Legal processes
+- "AI" or "model"
 """
 
 # -----------------------------------------------------------
-# Bot Events & Commands
+# BOT COMMANDS
 # -----------------------------------------------------------
 
 @bot.event
 async def on_ready():
     print(f"Bot is online as {bot.user.name}")
 
-@bot.command(name="ask")
-async def ask_trust(ctx, *, question):
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": TRUST_PROMPT},
-                {"role": "user", "content": question}
-            ],
-            max_tokens=700,
-            temperature=0.7
-        )
-        answer = response.choices[0].message.content
-        await ctx.send(answer)
-
-    except Exception as e:
-        await ctx.send(f"Error: {e}")
-        print(f"Error: {e}")
-
 @bot.command(name="letter")
 async def process_letter(ctx):
+
+    # Always send DM; notify in channel
+    await ctx.send("Your trustee response is being prepared and will be sent privately.")
+
     if not ctx.message.attachments:
-        await ctx.send("Please upload a letter (PDF or image) with your message.")
+        await ctx.author.send("Please upload a letter (PDF or image).")
         return
 
     attachment = ctx.message.attachments[0]
-    await ctx.send("Reading your uploaded letter...")
 
     try:
-        # Download file
         async with aiohttp.ClientSession() as session:
             async with session.get(attachment.url) as resp:
-                if resp.status != 200:
-                    await ctx.send("Failed to download the file.")
-                    return
                 data = await resp.read()
 
-        # OCR
+        # OCR extraction
         image = vision.Image(content=data)
         result = vision_client.document_text_detection(image=image)
         extracted_text = result.full_text_annotation.text
 
-        # Draft response
-        prompt = f"The following letter was uploaded by a trustee:\n\n{extracted_text}\n\nPlease draft an honourable equity-based response following the strategist instructions."
+        # CLASSIFY TONE
+        tone_result = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": TONE_CLASSIFIER},
+                {"role": "user", "content": extracted_text}
+            ],
+            max_tokens=10
+        )
+        tone = tone_result.choices[0].message.content.strip().upper()
+
+        # CLASSIFY TYPE
+        type_result = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": TYPE_CLASSIFIER},
+                {"role": "user", "content": extracted_text}
+            ],
+            max_tokens=10
+        )
+        letter_type = type_result.choices[0].message.content.strip().upper()
+
+        # THREAT SCORE
+        score_result = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": THREAT_SCORE_CLASSIFIER},
+                {"role": "user", "content": extracted_text}
+            ],
+            max_tokens=10
+        )
+        threat_score = score_result.choices[0].message.content.replace("\n", "").strip()
+
+        # TRUSTEE RESPONSE
+        combined_prompt = f"""
+Severity Category: {tone}
+Letter Type: {letter_type}
+Threat Score: {threat_score}
+
+Letter Content:
+{extracted_text}
+
+Please prepare the trustee's equity-based response.
+"""
 
         reply = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": LETTER_PROMPT},
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": combined_prompt}
             ],
-            max_tokens=800
+            max_tokens=1000
         )
 
-        draft = reply.choices[0].message.content
-        await ctx.send(f"**Trustee Letter Response:**\n\n{draft}")
+        final_response = reply.choices[0].message.content
+
+        # SEND TO USER PRIVATELY
+        await ctx.author.send(f"**Your Private Trustee Response:**\n\n{final_response}")
 
     except Exception as e:
-        await ctx.send(f"Error: {e}")
-        print(f"Error: {e}")
+        await ctx.author.send(f"Error: {e}")
 
 # -----------------------------------------------------------
-# Run the bot
+# RUN BOT
 # -----------------------------------------------------------
 
 bot.run(DISCORD_TOKEN)
