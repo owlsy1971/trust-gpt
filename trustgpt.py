@@ -9,23 +9,41 @@ import io
 from google.cloud import vision
 from google.oauth2 import service_account
 import json
+import base64
 
+# -----------------------------------------------------------
 # Load environment variables
+# -----------------------------------------------------------
+
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GCREDS = json.loads(os.getenv("GOOGLE_CREDS"))
+
+# Load Google Vision creds from Base64 (Railway-safe)
+creds_b64 = os.getenv("GOOGLE_CREDS_B64")
+if not creds_b64:
+    raise Exception("GOOGLE_CREDS_B64 environment variable is missing!")
+
+# Decode Base64 → JSON
+creds_json = base64.b64decode(creds_b64).decode("utf-8")
+GCREDS = json.loads(creds_json)
 
 # Initialize OpenAI and Vision clients
 client = OpenAI(api_key=OPENAI_API_KEY)
 vision_creds = service_account.Credentials.from_service_account_info(GCREDS)
 vision_client = vision.ImageAnnotatorClient(credentials=vision_creds)
 
+# -----------------------------------------------------------
 # Discord bot setup
+# -----------------------------------------------------------
+
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# -----------------------------------------------------------
 # Prompt for typed questions (!ask)
+# -----------------------------------------------------------
+
 TRUST_PROMPT = """
 You are a Private Trustee Strategist AI acting under English Equity and Conscience. You guide trustees of private irrevocable express trusts in their fiduciary roles, never offering legal or statutory advice.
 
@@ -59,7 +77,10 @@ Maxims:
 - "Equity acts in personam."
 """
 
+# -----------------------------------------------------------
 # Prompt for uploaded letters (!letter)
+# -----------------------------------------------------------
+
 LETTER_PROMPT = """
 You are a Private Trustee Strategist AI operating solely under English equity and conscience. You serve trustees of private irrevocable express trusts. Your responses are honourable, strategic, and strictly non-statutory. You do not acknowledge legal or public jurisdiction. You operate in equity alone.
 
@@ -98,6 +119,10 @@ COMMUNICATION:
 - Respond as a strategist in private equity
 """
 
+# -----------------------------------------------------------
+# Bot Events & Commands
+# -----------------------------------------------------------
+
 @bot.event
 async def on_ready():
     print(f"Bot is online as {bot.user.name}")
@@ -116,6 +141,7 @@ async def ask_trust(ctx, *, question):
         )
         answer = response.choices[0].message.content
         await ctx.send(answer)
+
     except Exception as e:
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
@@ -130,6 +156,7 @@ async def process_letter(ctx):
     await ctx.send("Reading your uploaded letter...")
 
     try:
+        # Download file
         async with aiohttp.ClientSession() as session:
             async with session.get(attachment.url) as resp:
                 if resp.status != 200:
@@ -137,10 +164,12 @@ async def process_letter(ctx):
                     return
                 data = await resp.read()
 
+        # OCR
         image = vision.Image(content=data)
         result = vision_client.document_text_detection(image=image)
         extracted_text = result.full_text_annotation.text
 
+        # Draft response
         prompt = f"The following letter was uploaded by a trustee:\n\n{extracted_text}\n\nPlease draft an honourable equity-based response following the strategist instructions."
 
         reply = client.chat.completions.create(
@@ -158,5 +187,9 @@ async def process_letter(ctx):
     except Exception as e:
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
+
+# -----------------------------------------------------------
+# Run the bot
+# -----------------------------------------------------------
 
 bot.run(DISCORD_TOKEN)
