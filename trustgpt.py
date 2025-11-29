@@ -158,7 +158,7 @@ async def process_letter(ctx):
         trademark_clause = f"Be advised that the identifiers and designations in your correspondence, including but not limited to the name {full_name}, are protected under intellectual property rights within Classes 36 and 45. Any unauthorized reference or commercial use is prohibited."
 
         # Final prompt
-        composed_prompt = f"Letter received:
+        composed_prompt = f"""Letter received:
 ---
 {extracted_text}
 
