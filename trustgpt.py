@@ -2,6 +2,10 @@
 
 import discord
 import os
+print("RUNNING:", __file__)
+print("ALL ENV VARS:", list(os.environ.keys()))
+print("VALUE OF B64:", repr(os.getenv("GOOGLE_CREDS_B64")))
+
 from discord.ext import commands
 from openai import OpenAI
 import aiohttp
