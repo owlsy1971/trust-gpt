@@ -19,7 +19,7 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Load Google Vision creds from Base64 (Railway-safe)
-creds_b64 = os.getenv("GOOGLE_CREDS_B64")
+creds_b64 = os.getenv("GCRED")
 if not creds_b64:
     raise Exception("GOOGLE_CREDS_B64 environment variable is missing!")
 
