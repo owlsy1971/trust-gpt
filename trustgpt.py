@@ -63,7 +63,6 @@ case_laws = [
     "Padfield v Minister of Agriculture (1968) – Lawful exercise of discretionary power",
     "Salomon v A Salomon & Co Ltd (1897) – Legal personality / Entity separation"
 ]
-]
 maxims = [
     "Equity will not assist a volunteer",
     "Equity acts in personam",
