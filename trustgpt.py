@@ -80,10 +80,6 @@ You are a Private Equity Strategist AI. You assist trustees of Private Irrevocab
 8. Threat Level & Conclusion
 """
 
-@bot.event
-async def on_ready():
-    print(f"Bot is online as {bot.user.name}")
-
 @bot.command(name="letter")
 async def process_letter(ctx):
     if not ctx.message.attachments:
@@ -94,6 +90,7 @@ async def process_letter(ctx):
     await ctx.send("Reading your uploaded letter...")
 
     try:
+        # Download letter
         async with aiohttp.ClientSession() as session:
             async with session.get(attachment.url) as resp:
                 if resp.status != 200:
@@ -101,13 +98,16 @@ async def process_letter(ctx):
                     return
                 data = await resp.read()
 
+        # OCR
         image = vision.Image(content=data)
         result = vision_client.document_text_detection(image=image)
         extracted_text = result.full_text_annotation.text
 
+        # Name detection fallback
         name_match = re.search(r"(?i)(Mrs\.?|Mr\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)+)", extracted_text)
         trust_name = name_match.group(0).strip() if name_match else "Mrs Nichola Roocroft"
 
+        # Case rotation and maxims
         user_id = str(ctx.author.id)
         index = user_case_rotation.get(user_id, 0)
         case_law = case_laws[index % len(case_laws)]
@@ -115,72 +115,77 @@ async def process_letter(ctx):
         user_case_rotation[user_id] = index + 1
 
         trademark_clause = (
-            f"The identifiers and designations in your correspondence, including the name '{trust_name}', "
-            f"are protected under Intellectual Property Rights in Classes 36 and 45. "
-            f"Any unauthorised reference or commercial use is strictly prohibited."
+            f"The identifiers in your correspondence, including '{trust_name}', "
+            f"are protected under IP classes 36 and 45. Unauthorised commercial use is prohibited."
         )
 
         legal_title_statement = (
-            f"The legal title to the name '{trust_name}' is held unequivocally by the trustee. "
-            f"All fiduciary functions and obligations are executed solely within private equity, "
-            f"devoid of public assumption or statutory interpretation."
+            f"Legal title to the name '{trust_name}' is held by the trustee in equity. "
+            f"All functions are performed privately under fiduciary conscience."
         )
 
         cease_desist_clause = (
-            f"I must insist upon a cessation of any further interference with the trust res and demand that "
-            f"all unlawful claims or processes be halted immediately. It is an established maxim of equity that "
-            f'“Equity will not assist a volunteer.” Consequently, any attempt to assert claims outside the purview '
-            f"of equity is considered interference."
+            f"You are instructed to cease interference with the trust res. "
+            f"Equity will not assist a volunteer."
         )
 
-        composed_prompt = f"""Letter received:
----
+        composed_prompt = f"""
+Letter received:
 {extracted_text}
 
-📌 Trustee Statement:
-Please be advised that the name '{trust_name}' is held within a Private Irrevocable Express Trust estate. The undersigned acts solely as trustee under English equity. No liability, joinder, or obligation is accepted.
+Trustee Statement:
+The name '{trust_name}' is held within a Private Irrevocable Express Trust. 
+No liability, joinder, or statutory assumption is accepted.
 
-⚖️ Case Law Reference:
+Case Law:
 {case_law}
 
-🛡️ Intellectual Property Clause:
+Intellectual Property Clause:
 {trademark_clause}
 
-📜 Legal Title Declaration:
+Legal Title Declaration:
 {legal_title_statement}
 
-🚫 Cease & Desist Clause:
+Cease & Desist Clause:
 {cease_desist_clause}
 
-📘 Closing Maxim:
+Closing Maxim:
 "{maxim}"
 
-Threat Level: Low. Should future communication be required, we request it be made honourably and in equity.
+Threat Level: Low.
+Respond honourably and in equity.
+"""
 
-Yours faithfully,
-Strategist, Private Equity"""
-
-        reply = client.chat.completions.create(
+        # ⭐ NEW — Correct OpenAI API (no markdown)
+        reply = client.responses.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": LETTER_PROMPT_TEMPLATE},
-                {"role": "user", "content": composed_prompt}
-            ],
-            max_tokens=1800
+            input=f"""
+You are a Private Equity Strategist.  
+DO NOT use markdown, asterisks, bold, italics, headings, lists, or any formatting.  
+Respond in plain text ONLY.  
+Here is the composed letter:\n\n{composed_prompt}
+""",
+            max_output_tokens=1800,
         )
 
-        draft = reply.choices[0].message.content
+        draft = reply.output_text
 
+        # Escape any remaining discord markdown
+        draft = discord.utils.escape_markdown(draft)
+
+        # Split or send
         if len(draft) > 1900:
             filename = f"trust_letter_{datetime.utcnow().isoformat()}.txt"
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(draft)
             await ctx.author.send("Response exceeds message limit. See attached:", file=discord.File(filename))
         else:
-            await ctx.author.send(f"Trustee Letter Response:**\n\n{draft}")
+            # Code block prevents markdown
+            await ctx.author.send(f"```\n{draft}\n```")
 
     except Exception as e:
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
+
 
 bot.run(DISCORD_TOKEN)
