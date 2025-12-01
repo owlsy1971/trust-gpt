@@ -20,12 +20,11 @@ from datetime import datetime
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Load Google Vision creds from Base64 (Railway-safe)
+# Load Google Vision creds from Base64
 creds_b64 = os.getenv("GCRED")
 if not creds_b64:
     raise Exception("GOOGLE_CREDS_B64 environment variable is missing!")
 
-# Decode Base64 → JSON
 creds_json = base64.b64decode(creds_b64).decode("utf-8")
 GCREDS = json.loads(creds_json)
 
@@ -51,7 +50,7 @@ case_laws = [
     "Paul v Constance (1976) - Intention over formality",
     "Milroy v Lord (1862) - Constitution of Trusts",
     "Re Kayford (1975) - Separation of funds",
-    "Tinsley v Milligan (1994) - Resulting trust despite illegality"
+    "Tinsley v Milligan (1994) - Resulting trust despite illegality",
     "Re Vandervell’s Trusts (No. 2) (1974) – Separation of legal and equitable title",
     "Barclays Bank v Quistclose Investments (1970) – Purpose trusts / Resulting trust",
     "Rochefoucauld v Boustead (1897) – Equity will not allow statute to cloak fraud",
@@ -63,7 +62,7 @@ case_laws = [
     "Padfield v Minister of Agriculture (1968) – Lawful exercise of discretionary power",
     "Salomon v A Salomon & Co Ltd (1897) – Legal personality / Entity separation"
 ]
-]
+
 maxims = [
     "Equity will not assist a volunteer",
     "Equity acts in personam",
@@ -71,38 +70,45 @@ maxims = [
     "A trustee must act in good conscience"
 ]
 
+MAX_DISCORD_MESSAGE_LENGTH = 1900
+
 # -----------------------------------------------------------
 # Prompt templates
 # -----------------------------------------------------------
 
 LETTER_PROMPT_TEMPLATE = """
-You are a Private Trustee Strategist AI operating solely under English equity and conscience. You serve trustees of private irrevocable express trusts. Your responses are honourable, strategic, and strictly non-statutory. You do not acknowledge legal or public jurisdiction. You operate in equity alone.
+You are a Private Equity Strategist AI operating under English Chancery principles. You assist Trustees of Private Irrevocable Express Trusts to respond to public correspondence, always preserving trust res and equity jurisdiction.
 
-PURPOSE:
-- Read uploaded correspondence
-- Protect trust res and estate privacy
-- Respond in honour with case law support
-- Maintain fiduciary boundaries
-
-JURISDICTION:
-- English Equity and Chancery tradition
+✅ JURISDICTION:
+- English equity law (not statute)
 - Maxims of Equity
-- Private contractual law
-- No public regulation, compliance or litigation
+- Trust law (Knight v Knight & related)
+- Private contract and trust principles
+- No reference to public regulation, legal fiction, or government systems
 
-REPLY FORMAT:
-1. Introduction
-2. Trustee Position
-3. Case Law
-4. Trademark Clause (if applicable)
-5. Legal Title Declaration (new)
-6. Closing maxim
-7. Threat Level
+✅ PURPOSE:
+- Review uploaded letters
+- Generate honourable responses
+- Assert private standing
+- Maintain fiduciary boundaries
+- Reference applicable trust case law and equity maxims
 
-COMMUNICATION:
-- Never mention legal terms or court systems
-- Never say "I am an AI"
-- Respond as a strategist in private equity
+✅ RESPONSE STRUCTURE:
+1. Introduction & context
+2. Trustee position
+3. Case law integration
+4. Intellectual Property Notice (if applicable)
+5. Legal Title Statement
+6. Concluding Maxim
+7. Threat Level (honour-based)
+
+🛑 AVOID:
+- Legalese or statutory language
+- Public court terms
+- Any claim to be AI or legal counsel
+- Obedience to public jurisdictions
+
+Respond as a strategist in equity. You operate in honour only.
 """
 
 # -----------------------------------------------------------
@@ -127,7 +133,6 @@ async def ask_trust(ctx, *, question):
         )
         answer = response.choices[0].message.content
         await ctx.author.send(answer)
-
     except Exception as e:
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
@@ -153,7 +158,7 @@ async def process_letter(ctx):
         result = vision_client.document_text_detection(image=image)
         extracted_text = result.full_text_annotation.text
 
-        name_match = re.search(r"(?i)(Mr\.?|Mrs\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+\s[A-Z][a-z]+)", extracted_text)
+        name_match = re.search(r"(?i)(Mr\.?|Mrs\.?|Miss|Ms\.?|Dr\.?)?\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+)+)", extracted_text)
         full_name = name_match.group(0) if name_match else "[Name Unknown]"
 
         user_id = str(ctx.author.id)
@@ -163,7 +168,6 @@ async def process_letter(ctx):
         user_case_rotation[user_id] = index + 1
 
         trademark_clause = f"Be advised that the identifiers and designations in your correspondence, including but not limited to the name {full_name}, are protected under intellectual property rights within Classes 36 and 45. Any unauthorized reference or commercial use is prohibited."
-
         legal_title_statement = f"The legal title to the name '{full_name}' is held by the trustee. All fiduciary functions and liabilities are executed in private equity, not subject to public presumption or statutory interpretation."
 
         composed_prompt = f"""Letter received:
@@ -171,7 +175,7 @@ async def process_letter(ctx):
 {extracted_text}
 
 Trustee Statement:
-The name {full_name} is held in a Private Irrevocable Express Trust. All liability is disclaimed under English equity. Respond appropriately.
+The referenced name, {full_name}, forms part of a private, irrevocable express trust estate. Any assumption of liability, obligation, or presumption is discharged in conscience, per equity. Respond exclusively under equitable principles. No joinder is given.
 
 Include the following in response:
 - Case Law: {case_law}
@@ -191,7 +195,7 @@ Include the following in response:
 
         draft = reply.choices[0].message.content
 
-        if len(draft) > 1900:
+        if len(draft) > MAX_DISCORD_MESSAGE_LENGTH:
             filename = f"trust_letter_{datetime.utcnow().isoformat()}.txt"
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(draft)
@@ -203,10 +207,18 @@ Include the following in response:
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
 
+@bot.command(name="equity")
+async def equity_toolkit(ctx):
+    user_id = str(ctx.author.id)
+    index = user_case_rotation.get(user_id, 0)
+    case = case_laws[index % len(case_laws)]
+    maxim = maxims[index % len(maxims)]
+    user_case_rotation[user_id] = index + 1
+    await ctx.send(f"📚 **Case Law:** {case}\n⚖️ **Maxim of Equity:** {maxim}")
+
 # -----------------------------------------------------------
 # Run the bot
 # -----------------------------------------------------------
 
 bot.run(DISCORD_TOKEN)
-
 
