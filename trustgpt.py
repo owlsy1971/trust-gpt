@@ -189,15 +189,15 @@ Include the following in response:
         )
 
         draft = reply.choices[0].message.content
+draft = discord.utils.escape_markdown(draft)
 
-        if len(draft) > 1900:
-            filename = f"trust_letter_{datetime.utcnow().isoformat()}.txt"
-            with open(filename, "w", encoding="utf-8") as f:
-                f.write(draft)
-            await ctx.author.send("Response exceeds message limit. See attached:", file=discord.File(filename))
-        else:
-            await ctx.author.send(f"**Trustee Letter Response:**\n\n{draft}")
-
+if len(draft) > 1900:
+    filename = f"trust_letter_{datetime.utcnow().isoformat()}.txt"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(draft)
+    await ctx.author.send("Response exceeds message limit. See attached:", file=discord.File(filename))
+else:
+    await ctx.author.send(f"```\n{draft}\n```")
     except Exception as e:
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
