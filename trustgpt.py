@@ -1,4 +1,4 @@
-# Full Discord bot script with GPT-4, Google Vision OCR, and equity-based trust prompts
+# Full Discord bot script with gpt-4o-mini, Google Vision OCR, and equity-based trust prompts
 
 import discord
 import os
