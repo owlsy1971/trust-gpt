@@ -177,7 +177,7 @@ Strategist, Private Equity"""
                 f.write(draft)
             await ctx.author.send("Response exceeds message limit. See attached:", file=discord.File(filename))
         else:
-            await ctx.author.send(f"**Trustee Letter Response:**\n\n{draft}")
+            await ctx.author.send(f"Trustee Letter Response:**\n\n{draft}")
 
     except Exception as e:
         await ctx.send(f"Error: {e}")
