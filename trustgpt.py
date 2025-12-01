@@ -1,4 +1,6 @@
-# Full Discord bot script with gpt-4o-mini, Google Vision OCR, and Intelligent Equity Engine
+# Full Discord bot script with Intelligent Equity Engine
+# Updated for FIRST‑PERSON trustee voice, strict Chancery language,
+# full equitable separation of persons, and correct fiduciary positioning.
 
 import discord
 import os
@@ -13,27 +15,23 @@ import re
 from datetime import datetime
 
 # -----------------------------------------------------------
-# Load environment variables
+# Environment
 # -----------------------------------------------------------
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# Load Google Vision creds from Base64 (Railway-safe)
 creds_b64 = os.getenv("GCRED")
 if not creds_b64:
     raise Exception("GCRED environment variable is missing!")
-
 creds_json = base64.b64decode(creds_b64).decode("utf-8")
 GCREDS = json.loads(creds_json)
 
-# Initialize OpenAI and Vision clients
 client = OpenAI(api_key=OPENAI_API_KEY)
 vision_creds = service_account.Credentials.from_service_account_info(GCREDS)
 vision_client = vision.ImageAnnotatorClient(credentials=vision_creds)
 
 # -----------------------------------------------------------
-# Discord setup
+# Discord
 # -----------------------------------------------------------
 
 intents = discord.Intents.default()
@@ -41,67 +39,86 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # -----------------------------------------------------------
-# Intelligent Case Law & Equity Maxims
+# Intelligence Tables
 # -----------------------------------------------------------
 
 user_case_rotation = {}
 
 case_laws_by_type = {
     "council": [
-        "Padfield v Minister of Agriculture (1968) – Lawful exercise of discretionary power",
-        "Entick v Carrington (1765) – No interference with private property without lawful authority",
+        "Padfield v Minister of Agriculture (1968) – Proper exercise of discretionary power",
+        "Entick v Carrington (1765) – No interference with private property without lawful warrant",
     ],
     "trust": [
         "Knight v Knight (1840) – The Three Certainties",
-        "Paul v Constance (1976) – Intention over formality",
-        "Milroy v Lord (1862) – Constitution of Trusts",
-        "Re Kayford (1975) – Separation of funds",
-        "Tinsley v Milligan (1994) – Resulting trust despite illegality",
+        "Paul v Constance (1976) – Intention may perfect a trust",
+        "Milroy v Lord (1862) – A trust must be properly constituted",
+        "Re Kayford (1975) – Separation of trust property",
         "Re Vandervell’s Trusts (No. 2) (1974) – Separation of legal and equitable title",
-        "Barclays Bank v Quistclose Investments (1970) – Purpose trusts / Resulting trust",
-        "Rochefoucauld v Boustead (1897) – Equity will not allow statute to cloak fraud",
-        "Keech v Sandford (1726) – Fiduciary loyalty",
+        "Rochefoucauld v Boustead (1897) – Equity prevents fraud despite lack of form",
+        "Keech v Sandford (1726) – Fiduciary loyalty is absolute",
     ],
     "commercial": [
-        "Tournier v National Provincial Bank (1924) – Confidentiality in financial affairs",
-        "Re Hallett’s Estate (1880) – Tracing in equity",
-        "Salomon v A Salomon & Co Ltd (1897) – Legal personality / Entity separation",
-    ],
+        "Tournier v National Provincial Bank (1924) – Duty of confidentiality in financial affairs",
+        "Re Hallett’s Estate (1880) – Tracing principles in equity",
+        "Salomon v A Salomon & Co Ltd (1897) – Legal personality must be respected",
+    ]
 }
 
 maxims = [
     "Equity will not assist a volunteer",
     "Equity acts in personam",
-    "Equity looks to intent, not form",
+    "Equity looks to intent rather than form",
     "A trustee must act in good conscience",
     "Equity regards as done that which ought to be done",
-    "Equity imputes an intention to fulfil an obligation",
+    "He who seeks equity must do equity",
     "He who comes to equity must come with clean hands",
     "Equity follows the law",
     "Delay defeats equity",
     "Where equities are equal, the first in time prevails",
     "Equity is equality",
-    "Equity aids the vigilant, not those who sleep on their rights",
-    "Equity will not suffer a wrong to be without a remedy",
+    "Equity aids the vigilant, not the indolent",
+    "Equity will not suffer a wrong without a remedy",
 ]
 
 # -----------------------------------------------------------
-# Prompt Template
+# Chancery‑Correct Prompt Template (First‑Person Trustee Voice)
 # -----------------------------------------------------------
 
 LETTER_PROMPT_TEMPLATE = """
-You are a Private Trustee Strategist AI operating solely under English equity and conscience.
-You serve trustees of private irrevocable express trusts. Your responses are honourable, strategic,
-and strictly non-statutory.
+You respond STRICTLY in first-person as the acting Trustee of a Private Irrevocable Express Trust.
+You write in correct Chancery and equitable language.
+You NEVER refer to the trustee as “you” and NEVER speak in third-person.
+You speak ONLY as:
 
-REPLY FORMAT:
-1. Introduction
-2. Trustee Position
-3. Case Law
-4. Trademark Clause
-5. Legal Title Declaration
-6. Closing Maxim
-7. Cease & Desist
+    "I, in my capacity as Trustee…"
+
+You maintain absolute separation between:
+- The MAN/WOMAN (equitable person)
+- The NAME (legal person) held as trust property
+
+You DO NOT acknowledge:
+- Public jurisdiction
+- Statutory obligations
+- Contract by presumption
+- Joinder
+
+You DO affirm:
+- Fiduciary conscience
+- Trust res separation
+- Equitable title vs legal title distinctions
+- Right of private administration
+
+Your letter MUST follow this 7‑section structure:
+1. Introduction (first-person trustee voice)
+2. Trustee Position (separation of persons + equitable standing)
+3. Case Law (insert dynamically)
+4. Trademark Clause (first-person assertion of title)
+5. Legal Title Declaration (trustee holds title; no joinder)
+6. Closing Maxim (dynamic)
+7. Cease & Desist (first-person directive)
+
+Write with honour, clarity, and private authority.
 """
 
 # -----------------------------------------------------------
@@ -113,7 +130,7 @@ async def on_ready():
     print(f"Bot is online as {bot.user.name}")
 
 # -----------------------------------------------------------
-# !letter Command
+# Letter Command
 # -----------------------------------------------------------
 
 @bot.command(name="letter")
@@ -124,144 +141,114 @@ async def process_letter(ctx):
         return
 
     attachment = ctx.message.attachments[0]
-    await ctx.send("Reading your uploaded letter...")
+    await ctx.send("Reading your uploaded letter…")
 
     try:
-        # ---------------------------
-        # Download attachment
-        # ---------------------------
+        # Download
         async with aiohttp.ClientSession() as session:
             async with session.get(attachment.url) as resp:
                 if resp.status != 200:
-                    await ctx.send("Failed to download the file.")
+                    await ctx.send("Failed to download file.")
                     return
                 data = await resp.read()
 
-        # ---------------------------
-        # OCR Extract
-        # ---------------------------
+        # OCR
         image = vision.Image(content=data)
         result = vision_client.document_text_detection(image=image)
         extracted_text = result.full_text_annotation.text
 
         # ---------------------------
-        # Detect Name (fixed logic)
+        # Name Detection (robust)
         # ---------------------------
         try:
-            name_match = re.search(
-                r"(?i)(Mr\.?|Mrs\.?|Miss|Ms\.?|Dr\.?)\s+[A-Z][a-z]+\s+[A-Z][a-z]+", extracted_text
-            )
-
+            name_match = re.search(r"(?i)(Mr\\.?|Mrs\\.?|Miss|Ms\\.?|Dr\\.?)\\s+[A-Z][a-z]+\\s+[A-Z][a-z]+", extracted_text)
             if name_match:
                 full_name = name_match.group(0)
             else:
-                fallback_match = re.search(
-                    r"\b([A-Z][a-z]+|[A-Z]+)\s+([A-Z][a-z]+|[A-Z]+)\b", extracted_text
-                )
+                fallback_match = re.search(r"\\b([A-Z][a-z]+|[A-Z]+)\\s+([A-Z][a-z]+|[A-Z]+)\\b", extracted_text)
                 full_name = fallback_match.group(0) if fallback_match else "[Name Unknown]"
-
         except Exception:
             full_name = "[Name Unknown]"
 
-        # ---------------------------
-        # Detect Letter Date
-        # ---------------------------
-        date_match = re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", extracted_text)
-        letter_date = date_match.group(0) if date_match else "[Date Missing]"
+        # Date
+        date_match = re.search(r"\\b\\d{1,2}/\\d{1,2}/\\d{2,4}\\b", extracted_text)
+        letter_date = date_match.group(0) if date_match else "[Undated]"
 
-        # ---------------------------
-        # Detect Letter Type
-        # ---------------------------
+        # Type detection
         low = extracted_text.lower()
-
-        if "council tax" in low or "local authority" in low:
+        if "council tax" in low or "liability order" in low:
             letter_type = "council"
-        elif "trust" in low or "beneficiary" in low:
-            letter_type = "trust"
-        else:
+        elif "mortimer clarke" in low or "cabot" in low or "debt" in low:
             letter_type = "commercial"
+        else:
+            letter_type = "trust"
 
-        # ---------------------------
-        # Rotate Case Law & Maxim
-        # ---------------------------
+        # Rotation logic
         user_id = str(ctx.author.id)
-        index = user_case_rotation.get(user_id, 0)
-        user_case_rotation[user_id] = index + 1
+        idx = user_case_rotation.get(user_id, 0)
+        user_case_rotation[user_id] = idx + 1
 
-        case_law_list = case_laws_by_type.get(letter_type, [])
-        case_law = case_law_list[index % len(case_law_list)] if case_law_list else "Knight v Knight (1840)"
+        case_law_list = case_laws_by_type.get(letter_type, case_laws_by_type["trust"])
+        case_law = case_law_list[idx % len(case_law_list)]
+        maxim = maxims[idx % len(maxims)]
 
-        maxim = maxims[index % len(maxims)]
-
-        # ---------------------------
         # Clauses
-        # ---------------------------
         trademark_clause = (
-            f"The identifiers in your correspondence, including the name {full_name}, "
-            f"are protected under IP rights (Classes 36 and 45)."
+            f"I assert that the identifiers utilised in your correspondence, including the designation '{full_name}', "
+            f"constitute property of this Private Trust and are protected under intellectual property classes 36 and 45. "
+            f"No party may employ or presume upon these identifiers without my express fiduciary consent."
         )
 
         legal_title_statement = (
-            f"The legal title to the name '{full_name}' is held by the trustee. All fiduciary acts "
-            f"occur exclusively in equity, beyond statutory presumption."
+            f"I hold the legal title to the designation '{full_name}' strictly in my capacity as Trustee. "
+            f"Such title is administered solely in equity, entirely separate from any public, statutory or presumed liability." 
         )
 
-        # ---------------------------
-        # Compose prompt
-        # ---------------------------
+        # Prompt to GPT
         composed_prompt = f"""
 Letter Date: {letter_date}
-Letter Name: {full_name}
+Designated Name: {full_name}
 
 OCR Extract:
 ---
 {extracted_text}
 ---
 
-Respond with:
-- Case Law: {case_law}
-- Maxim: {maxim}
-- Trademark Clause: {trademark_clause}
-- Legal Title: {legal_title_statement}
+Compose the full 7‑section trustee response using:
+Case Law: {case_law}
+Maxim: {maxim}
+Trademark Clause: {trademark_clause}
+Legal Title Declaration: {legal_title_statement}
 """
 
-        # ---------------------------
-        # Generate response
-        # ---------------------------
         reply = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": LETTER_PROMPT_TEMPLATE},
-                {"role": "user", "content": composed_prompt},
+                {"role": "user", "content": composed_prompt}
             ],
-            max_tokens=1800,
+            max_tokens=1800
         )
 
-        draft = reply.choices[0].message.content.replace("*", "")
+        draft = reply.choices[0].message.content
+        draft = draft.replace("*", "")
 
-        # ---------------------------
-        # Send result
-        # ---------------------------
         if len(draft) > 1900:
             filename = f"trust_letter_{datetime.utcnow().isoformat()}.txt"
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(draft)
-
-            await ctx.author.send(
-                "Response is long. Please see attached:", file=discord.File(filename)
-            )
+            await ctx.author.send("Response exceeds message limit. See attached:", file=discord.File(filename))
         else:
             await ctx.author.send(f"**Trustee Letter Response:**\n\n{draft}")
 
     except Exception as e:
         await ctx.send(f"Error: {e}")
-        print(f"Error: {e}")
+        print(e)
 
 # -----------------------------------------------------------
 # Run Bot
 # -----------------------------------------------------------
 
 bot.run(DISCORD_TOKEN)
-
 
 
