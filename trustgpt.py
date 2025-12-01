@@ -13,45 +13,29 @@ import base64
 import re
 from datetime import datetime
 
-# -----------------------------------------------------------
-# Load environment variables
-# -----------------------------------------------------------
-
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# Load Google Vision creds from Base64 (Railway-safe)
 creds_b64 = os.getenv("GCRED")
 if not creds_b64:
     raise Exception("GOOGLE_CREDS_B64 environment variable is missing!")
-
-# Decode Base64 → JSON
 creds_json = base64.b64decode(creds_b64).decode("utf-8")
 GCREDS = json.loads(creds_json)
 
-# Initialize OpenAI and Vision clients
 client = OpenAI(api_key=OPENAI_API_KEY)
 vision_creds = service_account.Credentials.from_service_account_info(GCREDS)
 vision_client = vision.ImageAnnotatorClient(credentials=vision_creds)
-
-# -----------------------------------------------------------
-# Discord bot setup
-# -----------------------------------------------------------
 
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# -----------------------------------------------------------
-# Global user tracking state
-# -----------------------------------------------------------
 user_case_rotation = {}
 case_laws = [
     "Knight v Knight (1840) - The Three Certainties",
     "Paul v Constance (1976) - Intention over formality",
     "Milroy v Lord (1862) - Constitution of Trusts",
     "Re Kayford (1975) - Separation of funds",
-    "Tinsley v Milligan (1994) - Resulting trust despite illegality"
+    "Tinsley v Milligan (1994) - Resulting trust despite illegality",
     "Re Vandervell’s Trusts (No. 2) (1974) – Separation of legal and equitable title",
     "Barclays Bank v Quistclose Investments (1970) – Purpose trusts / Resulting trust",
     "Rochefoucauld v Boustead (1897) – Equity will not allow statute to cloak fraud",
@@ -70,10 +54,6 @@ maxims = [
     "A trustee must act in good conscience"
 ]
 
-# -----------------------------------------------------------
-# Prompt templates
-# -----------------------------------------------------------
-
 LETTER_PROMPT_TEMPLATE = """
 You are a Private Equity Strategist AI. You assist trustees of Private Irrevocable Express Trusts to issue honourable responses to third-party correspondence. You operate exclusively in English equity and under fiduciary conscience. No reference to statute, legislation, or legal fiction is acknowledged. You serve to protect trust res and ensure proper private administration.
 
@@ -90,76 +70,19 @@ You are a Private Equity Strategist AI. You assist trustees of Private Irrevocab
 - Assert equitable boundaries and fiduciary position
 
 📦 REPLY FORMAT:
-1. **Introduction**
-   - Acknowledge receipt of their correspondence
-   - Confirm any reference number and date
-   - Clarify that the name mentioned is part of a private express trust
-
-2. **Trustee Position**
-   - Assert non-joinder and discharge of liability
-   - Confirm administration occurs under equity only
-   - Deny any legal, statutory, or fiduciary connection
-
-3. **Relevant Case Law**
-   - Reference one established equity case
-   - Justify the trustee position through it
-
-4. **Trademark / Intellectual Property Clause** (if applicable)
-   - Mention IP Classes 36 and 45
-   - Prohibit unauthorised reference or use of trust designations
-
-5. **Legal Title Declaration**
-   - Confirm legal title to the name is held by the trustee
-   - Deny public assumption or statutory interpretation
-
-6. **Cease & Desist Clause**
-   - Forbid any further interference with trust res
-   - Demand cessation of unlawful claims or processes
-   - Affirm that equity protects the estate from harassment
-
-7. **Closing Maxim of Equity**
-   - Include a maxim like: "Equity sees that as done which ought to be done."
-
-8. **Threat Level & Conclusion**
-   - Declare threat level (Low, Moderate, High)
-   - Invite them to correspond honourably within equity if needed
-   - End with: “Yours faithfully,” and title: Strategist, Private Equity
-
-⚠️ PROHIBITED:
-- No references to courts, legal rights, or "AI"
-- Never offer legal advice or statutory defence
-- Never submit to or acknowledge jurisdiction outside equity
-
-You are not a lawyer. You are an honourable strategist serving private trustees. You do not operate in commerce or statute. You are in trust, in conscience, in equity.
+1. Introduction
+2. Trustee Position
+3. Case Law
+4. Trademark Clause (if applicable)
+5. Legal Title Declaration
+6. Cease & Desist
+7. Closing Maxim
+8. Threat Level & Conclusion
 """
-
-
-# -----------------------------------------------------------
-# Bot Events & Commands
-# -----------------------------------------------------------
 
 @bot.event
 async def on_ready():
     print(f"Bot is online as {bot.user.name}")
-
-@bot.command(name="ask")
-async def ask_trust(ctx, *, question):
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": LETTER_PROMPT_TEMPLATE},
-                {"role": "user", "content": question}
-            ],
-            max_tokens=700,
-            temperature=0.7
-        )
-        answer = response.choices[0].message.content
-        await ctx.author.send(answer)
-
-    except Exception as e:
-        await ctx.send(f"Error: {e}")
-        print(f"Error: {e}")
 
 @bot.command(name="letter")
 async def process_letter(ctx):
@@ -182,8 +105,8 @@ async def process_letter(ctx):
         result = vision_client.document_text_detection(image=image)
         extracted_text = result.full_text_annotation.text
 
-        name_match = re.search(r"(?i)(Mr\.?|Mrs\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+\s[A-Z][a-z]+)", extracted_text)
-        full_name = name_match.group(0) if name_match else "[Name Unknown]"
+        name_match = re.search(r"(?i)(Mrs\.?|Mr\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)+)", extracted_text)
+        trust_name = name_match.group(0).strip() if name_match else "Mrs Nichola Roocroft"
 
         user_id = str(ctx.author.id)
         index = user_case_rotation.get(user_id, 0)
@@ -191,23 +114,51 @@ async def process_letter(ctx):
         maxim = maxims[index % len(maxims)]
         user_case_rotation[user_id] = index + 1
 
-        trademark_clause = f"Be advised that the identifiers and designations in your correspondence, including but not limited to the name {full_name}, are protected under intellectual property rights within Classes 36 and 45. Any unauthorized reference or commercial use is prohibited."
+        trademark_clause = (
+            f"The identifiers and designations in your correspondence, including the name '{trust_name}', "
+            f"are protected under Intellectual Property Rights in Classes 36 and 45. "
+            f"Any unauthorised reference or commercial use is strictly prohibited."
+        )
 
-        legal_title_statement = f"The legal title to the name '{full_name}' is held by the trustee. All fiduciary functions and liabilities are executed in private equity, not subject to public presumption or statutory interpretation."
+        legal_title_statement = (
+            f"The legal title to the name '{trust_name}' is held unequivocally by the trustee. "
+            f"All fiduciary functions and obligations are executed solely within private equity, "
+            f"devoid of public assumption or statutory interpretation."
+        )
+
+        cease_desist_clause = (
+            f"I must insist upon a cessation of any further interference with the trust res and demand that "
+            f"all unlawful claims or processes be halted immediately. It is an established maxim of equity that "
+            f'“Equity will not assist a volunteer.” Consequently, any attempt to assert claims outside the purview '
+            f"of equity is considered interference."
+        )
 
         composed_prompt = f"""Letter received:
 ---
 {extracted_text}
 
-Trustee Statement:
-The name {full_name} is held in a Private Irrevocable Express Trust. All liability is disclaimed under English equity. Respond appropriately.
+📌 Trustee Statement:
+Please be advised that the name '{trust_name}' is held within a Private Irrevocable Express Trust estate. The undersigned acts solely as trustee under English equity. No liability, joinder, or obligation is accepted.
 
-Include the following in response:
-- Case Law: {case_law}
-- Maxim: {maxim}
-- {trademark_clause}
-- {legal_title_statement}
-"""
+⚖️ Case Law Reference:
+{case_law}
+
+🛡️ Intellectual Property Clause:
+{trademark_clause}
+
+📜 Legal Title Declaration:
+{legal_title_statement}
+
+🚫 Cease & Desist Clause:
+{cease_desist_clause}
+
+📘 Closing Maxim:
+"{maxim}"
+
+Threat Level: Low. Should future communication be required, we request it be made honourably and in equity.
+
+Yours faithfully,
+Strategist, Private Equity"""
 
         reply = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -231,9 +182,5 @@ Include the following in response:
     except Exception as e:
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
-
-# -----------------------------------------------------------
-# Run the bot
-# -----------------------------------------------------------
 
 bot.run(DISCORD_TOKEN)
