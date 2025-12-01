@@ -128,8 +128,13 @@ async def process_letter(ctx):
         result = vision_client.document_text_detection(image=image)
         extracted_text = result.full_text_annotation.text
 
-        name_match = re.search(r"(?i)(Mr\\.?|Mrs\\.?|Miss|Ms\\.?|Dr\\.?)\\s+([A-Z][a-z]+\\s[A-Z][a-z]+)", extracted_text)
-        full_name = name_match.group(0) if name_match else "[Name Unknown]"
+        name_match = re.search(r"(?i)(Mr\.?|Mrs\.?|Miss|Ms\.?|Dr\.?)\s+[A-Z][a-z]+\s+[A-Z][a-z]+", extracted_text)
+
+if name_match:
+    full_name = name_match.group(0)
+else:
+    fallback_match = re.search(r"\b([A-Z][a-z]+|[A-Z]+)\s+([A-Z][a-z]+|[A-Z]+)\b", extracted_text)
+    full_name = fallback_match.group(0) if fallback_match else "[Name Unknown]"
 
         date_match = re.search(r"(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})", extracted_text)
         found_date = date_match.group(0) if date_match else "[Date Missing]"
@@ -194,4 +199,5 @@ OCR Extract:
         print(f"Error: {e}")
 
 bot.run(DISCORD_TOKEN)
+
 
