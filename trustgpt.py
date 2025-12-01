@@ -97,7 +97,7 @@ REPLY FORMAT:
 4. Trademark Clause (if applicable)
 5. Legal Title Declaration (new)
 6. Closing maxim
-7. Threat Level
+7. cease and desist on trust property
 
 COMMUNICATION:
 - Never mention legal terms or court systems
