@@ -180,7 +180,7 @@ Include the following in response:
 """
 
         reply = client.chat.completions.create(
-            gpt-4o-mini",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": LETTER_PROMPT_TEMPLATE},
                 {"role": "user", "content": composed_prompt}
