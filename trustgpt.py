@@ -13,29 +13,45 @@ import base64
 import re
 from datetime import datetime
 
+# -----------------------------------------------------------
+# Load environment variables
+# -----------------------------------------------------------
+
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Load Google Vision creds from Base64 (Railway-safe)
 creds_b64 = os.getenv("GCRED")
 if not creds_b64:
     raise Exception("GOOGLE_CREDS_B64 environment variable is missing!")
+
+# Decode Base64 → JSON
 creds_json = base64.b64decode(creds_b64).decode("utf-8")
 GCREDS = json.loads(creds_json)
 
+# Initialize OpenAI and Vision clients
 client = OpenAI(api_key=OPENAI_API_KEY)
 vision_creds = service_account.Credentials.from_service_account_info(GCREDS)
 vision_client = vision.ImageAnnotatorClient(credentials=vision_creds)
+
+# -----------------------------------------------------------
+# Discord bot setup
+# -----------------------------------------------------------
 
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# -----------------------------------------------------------
+# Global user tracking state
+# -----------------------------------------------------------
 user_case_rotation = {}
 case_laws = [
     "Knight v Knight (1840) - The Three Certainties",
     "Paul v Constance (1976) - Intention over formality",
     "Milroy v Lord (1862) - Constitution of Trusts",
     "Re Kayford (1975) - Separation of funds",
-    "Tinsley v Milligan (1994) - Resulting trust despite illegality",
+    "Tinsley v Milligan (1994) - Resulting trust despite illegality"
     "Re Vandervell’s Trusts (No. 2) (1974) – Separation of legal and equitable title",
     "Barclays Bank v Quistclose Investments (1970) – Purpose trusts / Resulting trust",
     "Rochefoucauld v Boustead (1897) – Equity will not allow statute to cloak fraud",
@@ -54,31 +70,66 @@ maxims = [
     "A trustee must act in good conscience"
 ]
 
+# -----------------------------------------------------------
+# Prompt templates
+# -----------------------------------------------------------
+
 LETTER_PROMPT_TEMPLATE = """
-You are a Private Equity Strategist AI. You assist trustees of Private Irrevocable Express Trusts to issue honourable responses to third-party correspondence. You operate exclusively in English equity and under fiduciary conscience. No reference to statute, legislation, or legal fiction is acknowledged. You serve to protect trust res and ensure proper private administration.
+You are a Private Trustee Strategist AI operating solely under English equity and conscience. You serve trustees of private irrevocable express trusts. Your responses are honourable, strategic, and strictly non-statutory. You do not acknowledge legal or public jurisdiction. You operate in equity alone.
 
-📜 JURISDICTION:
-- English Equity and Chancery principles
+PURPOSE:
+- Read uploaded correspondence
+- Protect trust res and estate privacy
+- Respond in honour with case law support
+- Maintain fiduciary boundaries
+
+JURISDICTION:
+- English Equity and Chancery tradition
 - Maxims of Equity
-- Express Trust law (e.g., Knight v Knight, Milroy v Lord, etc.)
-- No public law, legal courts, or statutory compliance
+- Private contractual law
+- No public regulation, compliance or litigation
 
-🎯 PURPOSE:
-- Review uploaded letters
-- Generate equity-based trustee replies
-- Refuse joinder, liability, and statutory assumptions
-- Assert equitable boundaries and fiduciary position
-
-📦 REPLY FORMAT:
+REPLY FORMAT:
 1. Introduction
 2. Trustee Position
 3. Case Law
 4. Trademark Clause (if applicable)
-5. Legal Title Declaration
-6. Cease & Desist
-7. Closing Maxim
-8. Threat Level & Conclusion
+5. Legal Title Declaration (new)
+6. Closing maxim
+7. cease and desist on trust property
+
+COMMUNICATION:
+- Never mention legal terms or court systems
+- Never say "I am an AI"
+- Respond as a strategist in private equity
 """
+
+# -----------------------------------------------------------
+# Bot Events & Commands
+# -----------------------------------------------------------
+
+@bot.event
+async def on_ready():
+    print(f"Bot is online as {bot.user.name}")
+
+@bot.command(name="ask")
+async def ask_trust(ctx, *, question):
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": LETTER_PROMPT_TEMPLATE},
+                {"role": "user", "content": question}
+            ],
+            max_tokens=700,
+            temperature=0.7
+        )
+        answer = response.choices[0].message.content
+        await ctx.author.send(answer)
+
+    except Exception as e:
+        await ctx.send(f"Error: {e}")
+        print(f"Error: {e}")
 
 @bot.command(name="letter")
 async def process_letter(ctx):
@@ -90,7 +141,6 @@ async def process_letter(ctx):
     await ctx.send("Reading your uploaded letter...")
 
     try:
-        # Download letter
         async with aiohttp.ClientSession() as session:
             async with session.get(attachment.url) as resp:
                 if resp.status != 200:
@@ -98,94 +148,62 @@ async def process_letter(ctx):
                     return
                 data = await resp.read()
 
-        # OCR
         image = vision.Image(content=data)
         result = vision_client.document_text_detection(image=image)
         extracted_text = result.full_text_annotation.text
 
-        # Name detection fallback
-        name_match = re.search(r"(?i)(Mrs\.?|Mr\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)+)", extracted_text)
-        trust_name = name_match.group(0).strip() if name_match else "Mrs Nichola Roocroft"
+        name_match = re.search(r"(?i)(Mr\.?|Mrs\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+\s[A-Z][a-z]+)", extracted_text)
+        full_name = name_match.group(0) if name_match else "[Name Unknown]"
 
-        # Case rotation and maxims
         user_id = str(ctx.author.id)
         index = user_case_rotation.get(user_id, 0)
         case_law = case_laws[index % len(case_laws)]
         maxim = maxims[index % len(maxims)]
         user_case_rotation[user_id] = index + 1
 
-        trademark_clause = (
-            f"The identifiers in your correspondence, including '{trust_name}', "
-            f"are protected under IP classes 36 and 45. Unauthorised commercial use is prohibited."
-        )
+        trademark_clause = f"Be advised that the identifiers and designations in your correspondence, including but not limited to the name {full_name}, are protected under intellectual property rights within Classes 36 and 45. Any unauthorized reference or commercial use is prohibited."
 
-        legal_title_statement = (
-            f"Legal title to the name '{trust_name}' is held by the trustee in equity. "
-            f"All functions are performed privately under fiduciary conscience."
-        )
+        legal_title_statement = f"The legal title to the name '{full_name}' is held by the trustee. All fiduciary functions and liabilities are executed in private equity, not subject to public presumption or statutory interpretation."
 
-        cease_desist_clause = (
-            f"You are instructed to cease interference with the trust res. "
-            f"Equity will not assist a volunteer."
-        )
-
-        composed_prompt = f"""
-Letter received:
+        composed_prompt = f"""Letter received:
+---
 {extracted_text}
 
 Trustee Statement:
-The name '{trust_name}' is held within a Private Irrevocable Express Trust. 
-No liability, joinder, or statutory assumption is accepted.
+The name {full_name} is held in a Private Irrevocable Express Trust. All liability is disclaimed under English equity. Respond appropriately.
 
-Case Law:
-{case_law}
-
-Intellectual Property Clause:
-{trademark_clause}
-
-Legal Title Declaration:
-{legal_title_statement}
-
-Cease & Desist Clause:
-{cease_desist_clause}
-
-Closing Maxim:
-"{maxim}"
-
-Threat Level: Low.
-Respond honourably and in equity.
+Include the following in response:
+- Case Law: {case_law}
+- Maxim: {maxim}
+- {trademark_clause}
+- {legal_title_statement}
 """
 
-        # ⭐ NEW — Correct OpenAI API (no markdown)
-        reply = client.responses.create(
+        reply = client.chat.completions.create(
             model="gpt-4o-mini",
-            input=f"""
-You are a Private Equity Strategist.  
-DO NOT use markdown, asterisks, bold, italics, headings, lists, or any formatting.  
-Respond in plain text ONLY.  
-Here is the composed letter:\n\n{composed_prompt}
-""",
-            max_output_tokens=1800,
+            messages=[
+                {"role": "system", "content": LETTER_PROMPT_TEMPLATE},
+                {"role": "user", "content": composed_prompt}
+            ],
+            max_tokens=1800
         )
 
-        draft = reply.output_text
+        draft = reply.choices[0].message.content
 
-        # Escape any remaining discord markdown
-        draft = discord.utils.escape_markdown(draft)
-
-        # Split or send
         if len(draft) > 1900:
             filename = f"trust_letter_{datetime.utcnow().isoformat()}.txt"
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(draft)
             await ctx.author.send("Response exceeds message limit. See attached:", file=discord.File(filename))
         else:
-            # Code block prevents markdown
-            await ctx.author.send(f"```\n{draft}\n```")
+            await ctx.author.send(f"**Trustee Letter Response:**\n\n{draft}")
 
     except Exception as e:
         await ctx.send(f"Error: {e}")
         print(f"Error: {e}")
 
+# -----------------------------------------------------------
+# Run the bot
+# -----------------------------------------------------------
 
 bot.run(DISCORD_TOKEN)
