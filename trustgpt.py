@@ -52,6 +52,17 @@ case_laws = [
     "Milroy v Lord (1862) - Constitution of Trusts",
     "Re Kayford (1975) - Separation of funds",
     "Tinsley v Milligan (1994) - Resulting trust despite illegality"
+    "Re Vandervell’s Trusts (No. 2) (1974) – Separation of legal and equitable title",
+    "Barclays Bank v Quistclose Investments (1970) – Purpose trusts / Resulting trust",
+    "Rochefoucauld v Boustead (1897) – Equity will not allow statute to cloak fraud",
+    "Keech v Sandford (1726) – Fiduciary loyalty / No personal gain from trust",
+    "Cowan v Scargill (1985) – Trustee duty to act in best interests of beneficiaries",
+    "Entick v Carrington (1765) – No interference with private property without lawful authority",
+    "Tournier v National Provincial Bank (1924) – Confidentiality in financial affairs",
+    "Re Hallett’s Estate (1880) – Tracing in equity",
+    "Padfield v Minister of Agriculture (1968) – Lawful exercise of discretionary power",
+    "Salomon v A Salomon & Co Ltd (1897) – Legal personality / Entity separation"
+]
 ]
 maxims = [
     "Equity will not assist a volunteer",
