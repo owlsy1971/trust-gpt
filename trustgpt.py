@@ -1,4 +1,4 @@
-# Full Discord bot script with gpt-4o-mini, Google Vision OCR, and equity-based trust prompts
+# Full Discord bot script with intelligent equity-based letter analysis
 
 import discord
 import os
@@ -20,16 +20,13 @@ from datetime import datetime
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Load Google Vision creds from Base64 (Railway-safe)
 creds_b64 = os.getenv("GCRED")
 if not creds_b64:
     raise Exception("GOOGLE_CREDS_B64 environment variable is missing!")
 
-# Decode Base64 → JSON
 creds_json = base64.b64decode(creds_b64).decode("utf-8")
 GCREDS = json.loads(creds_json)
 
-# Initialize OpenAI and Vision clients
 client = OpenAI(api_key=OPENAI_API_KEY)
 vision_creds = service_account.Credentials.from_service_account_info(GCREDS)
 vision_client = vision.ImageAnnotatorClient(credentials=vision_creds)
@@ -46,23 +43,12 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Global user tracking state
 # -----------------------------------------------------------
 user_case_rotation = {}
-case_laws = [
-    "Knight v Knight (1840) - The Three Certainties",
-    "Paul v Constance (1976) - Intention over formality",
-    "Milroy v Lord (1862) - Constitution of Trusts",
-    "Re Kayford (1975) - Separation of funds",
-    "Tinsley v Milligan (1994) - Resulting trust despite illegality"
-    "Re Vandervell’s Trusts (No. 2) (1974) – Separation of legal and equitable title",
-    "Barclays Bank v Quistclose Investments (1970) – Purpose trusts / Resulting trust",
-    "Rochefoucauld v Boustead (1897) – Equity will not allow statute to cloak fraud",
-    "Keech v Sandford (1726) – Fiduciary loyalty / No personal gain from trust",
-    "Cowan v Scargill (1985) – Trustee duty to act in best interests of beneficiaries",
-    "Entick v Carrington (1765) – No interference with private property without lawful authority",
-    "Tournier v National Provincial Bank (1924) – Confidentiality in financial affairs",
-    "Re Hallett’s Estate (1880) – Tracing in equity",
-    "Padfield v Minister of Agriculture (1968) – Lawful exercise of discretionary power",
-    "Salomon v A Salomon & Co Ltd (1897) – Legal personality / Entity separation"
-]
+case_laws = {
+    "council": "Padfield v Minister of Agriculture (1968) – Lawful exercise of discretionary power",
+    "enforcement": "Entick v Carrington (1765) – No interference with private property without lawful authority",
+    "private": "Paul v Constance (1976) – Intention over formality",
+    "default": "Knight v Knight (1840) - The Three Certainties"
+}
 maxims = [
     "Equity will not assist a volunteer",
     "Equity acts in personam",
@@ -71,7 +57,7 @@ maxims = [
 ]
 
 # -----------------------------------------------------------
-# Prompt templates
+# Prompt template
 # -----------------------------------------------------------
 
 LETTER_PROMPT_TEMPLATE = """
@@ -94,9 +80,9 @@ REPLY FORMAT:
 2. Trustee Position
 3. Case Law
 4. Trademark Clause (if applicable)
-5. Legal Title Declaration (new)
+5. Legal Title Declaration
 6. Closing maxim
-7. cease and desist on trust property
+7. Cease and desist on trust property
 
 COMMUNICATION:
 - Never mention legal terms or court systems
@@ -111,25 +97,6 @@ COMMUNICATION:
 @bot.event
 async def on_ready():
     print(f"Bot is online as {bot.user.name}")
-
-@bot.command(name="ask")
-async def ask_trust(ctx, *, question):
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": LETTER_PROMPT_TEMPLATE},
-                {"role": "user", "content": question}
-            ],
-            max_tokens=700,
-            temperature=0.7
-        )
-        answer = response.choices[0].message.content
-        await ctx.author.send(answer)
-
-    except Exception as e:
-        await ctx.send(f"Error: {e}")
-        print(f"Error: {e}")
 
 @bot.command(name="letter")
 async def process_letter(ctx):
@@ -152,12 +119,23 @@ async def process_letter(ctx):
         result = vision_client.document_text_detection(image=image)
         extracted_text = result.full_text_annotation.text
 
-        name_match = re.search(r"(?i)(Mr\.?|Mrs\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+\s[A-Z][a-z]+)", extracted_text)
+        # Extract full name and date
+        name_match = re.search(r"(?i)(Mr\\.?|Mrs\\.?|Miss|Ms\\.?|Dr\\.?)\\s+([A-Z][a-z]+\\s[A-Z][a-z]+)", extracted_text)
         full_name = name_match.group(0) if name_match else "[Name Unknown]"
+        date_match = re.search(r"(\d{2}/\d{2}/\d{4})", extracted_text)
+        letter_date = date_match.group(0) if date_match else "[Date Unknown]"
 
+        # Detect sender type
+        sender_type = "private"
+        lowered = extracted_text.lower()
+        if "council tax" in lowered:
+            sender_type = "council"
+        elif "enforcement agent" in lowered or "bailiff" in lowered:
+            sender_type = "enforcement"
+
+        case_law = case_laws.get(sender_type, case_laws["default"])
         user_id = str(ctx.author.id)
         index = user_case_rotation.get(user_id, 0)
-        case_law = case_laws[index % len(case_laws)]
         maxim = maxims[index % len(maxims)]
         user_case_rotation[user_id] = index + 1
 
@@ -165,14 +143,16 @@ async def process_letter(ctx):
 
         legal_title_statement = f"The legal title to the name '{full_name}' is held by the trustee. All fiduciary functions and liabilities are executed in private equity, not subject to public presumption or statutory interpretation."
 
-        composed_prompt = f"""Letter received:
+        summary = f"This letter was issued on {letter_date}, addressed to {full_name}, and appears to concern a {sender_type} matter under presumed public authority."
+
+        composed_prompt = f"""Incoming Letter Summary:
+{summary}
+
+OCR Extracted:
 ---
 {extracted_text}
 
-Trustee Statement:
-The name {full_name} is held in a Private Irrevocable Express Trust. All liability is disclaimed under English equity. Respond appropriately.
-
-Include the following in response:
+Compose a formal trustee response letter:
 - Case Law: {case_law}
 - Maxim: {maxim}
 - {trademark_clause}
@@ -188,8 +168,7 @@ Include the following in response:
             max_tokens=1800
         )
 
-        draft = reply.choices[0].message.content
-        draft = draft.replace("*", "")
+        draft = reply.choices[0].message.content.replace("*", "")
         if len(draft) > 1900:
             filename = f"trust_letter_{datetime.utcnow().isoformat()}.txt"
             with open(filename, "w", encoding="utf-8") as f:
