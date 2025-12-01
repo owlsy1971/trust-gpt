@@ -189,7 +189,7 @@ Include the following in response:
         )
 
         draft = reply.choices[0].message.content
-
+        draft = draft.replace("*", "")
         if len(draft) > 1900:
             filename = f"trust_letter_{datetime.utcnow().isoformat()}.txt"
             with open(filename, "w", encoding="utf-8") as f:
