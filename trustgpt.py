@@ -54,6 +54,15 @@ maxims = [
     "Equity acts in personam",
     "Equity looks to intent, not form",
     "A trustee must act in good conscience"
+    "Equity regards as done that which ought to be done",
+    "Equity imputes an intention to fulfil an obligation",
+    "He who comes to equity must come with clean hands",
+    "Equity follows the law",
+    "Delay defeats equity",
+    "Where equities are equal, the first in time prevails",
+    "Equity is equality",
+    "Equity aids the vigilant, not those who sleep on their rights",
+    "Equity will not suffer a wrong to be without a remedy"
 ]
 
 # -----------------------------------------------------------
