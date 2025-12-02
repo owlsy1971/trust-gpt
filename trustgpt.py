@@ -3,7 +3,6 @@ import os
 from discord.ext import commands
 from openai import OpenAI
 import aiohttp
-import io
 from google.cloud import vision
 from google.oauth2 import service_account
 import json
@@ -45,10 +44,8 @@ case_laws = [
     "Tournier v National Provincial Bank (1924) – Confidentiality in financial affairs",
     "Re Hallett’s Estate (1880) – Tracing in equity",
     "Padfield v Minister of Agriculture (1968) – Lawful exercise of discretionary power",
-    "Salomon v A Salomon & Co Ltd (1897) – Legal personality / Entity separation",
-    "R v City of London Magistrates’ Court (2010) – Validity of enforcement evidence"
+    "Salomon v A Salomon & Co Ltd (1897) – Legal personality / Entity separation"
 ]
-
 maxims = [
     "Equity will not assist a volunteer",
     "Equity acts in personam",
@@ -78,8 +75,8 @@ REPLY FORMAT:
 4. Trademark Clause (if applicable)
 5. Legal Title Declaration (new)
 6. Closing maxim
-7. cease and desist on trust property
-8. Data Privacy (if civil enforcement detected)
+7. Cease and Desist on Trust Property
+8. Data Privacy Clause (if applicable)
 
 COMMUNICATION:
 - Never mention legal terms or court systems
@@ -113,11 +110,11 @@ async def process_letter(ctx):
         extracted_text = result.full_text_annotation.text.replace('\n', ' ')
 
         try:
-            name_match = re.search(r"(?i)(Mr\\.?|Mrs\\.?|Miss|Ms\\.?|Dr\\.?)\\s+([A-Z][a-z]+\\s[A-Z][a-z]+)", extracted_text)
+            name_match = re.search(r"(?i)(Mrs\.?|Mr\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+\s[A-Z][a-z]+)", extracted_text)
             if name_match:
                 full_name = name_match.group(0)
             else:
-                fallback_match = re.search(r"\\b([A-Z][a-z]+)\\s+([A-Z][a-z]+)\\b", extracted_text)
+                fallback_match = re.search(r"\b([A-Z][a-z]+\s[A-Z][a-z]+)\b", extracted_text)
                 full_name = fallback_match.group(0) if fallback_match else "[Name Unknown]"
         except Exception:
             full_name = "[Name Unknown]"
@@ -128,18 +125,9 @@ async def process_letter(ctx):
         maxim = maxims[index % len(maxims)]
         user_case_rotation[user_id] = index + 1
 
-        trademark_clause = f"Be advised that the identifiers and designations in your correspondence, including but not limited to the name {full_name}, are protected under intellectual property rights within Classes 36 and 45. Any unauthorized reference or commercial use is prohibited."
+        trademark_clause = f"Be advised that the identifiers and designations in your correspondence, including but not limited to the name {full_name}, are protected under intellectual property rights within Classes 36 and 45. Any unauthorized reference or commercial use is strictly prohibited."
 
-        legal_title_statement = f"The legal title to the name '{full_name}' is held by the trustee. All fiduciary functions and liabilities are executed in private equity, not subject to public presumption or statutory interpretation."
-
-        extra_clause = ""
-        if any(keyword in extracted_text.lower() for keyword in ["pcn", "penalty charge", "ulez", "congestion", "civil enforcement", "tfl", "parking"]):
-            case_law = "Entick v Carrington (1765) – No interference with private property without lawful authority"
-            extra_clause = ("\nAdditionally, this trust property is used solely in private. No joinder has occurred with statutory systems, \
-" 
-                            "and any data captured by ANPR or enforcement agencies without consent breaches lawful use limitations \
-" 
-                            "under privacy protections and GDPR." )
+        legal_title_statement = f"The legal title to the name '{full_name}' is held by the trustee. All fiduciary functions and obligations are executed in an equitable context, beyond any public presumption or statutory interpretation."
 
         composed_prompt = f"""Letter received:
 ---
@@ -153,7 +141,7 @@ Include the following in response:
 - Maxim: {maxim}
 - {trademark_clause}
 - {legal_title_statement}
-{extra_clause}
+- Include data privacy clause if related to enforcement
 """
 
         reply = client.chat.completions.create(
@@ -180,6 +168,3 @@ Include the following in response:
         print(f"Error: {e}")
 
 bot.run(DISCORD_TOKEN)
-
-
-
