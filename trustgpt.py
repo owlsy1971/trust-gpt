@@ -75,12 +75,12 @@ REPLY FORMAT:
 4. Trademark Clause (if applicable)
 5. Legal Title Declaration (new)
 6. Closing maxim
-7. Cease and Desist on Trust Property
-8. Data Privacy Clause (if applicable)
+7. Cease and desist on trust property
+8. Data Protection Objection (if financial enforcement detected)
 
 COMMUNICATION:
 - Never mention legal terms or court systems
-- Never say "I am an AI"
+- Never say \"I am an AI\"
 - Respond as a strategist in private equity
 """
 
@@ -110,11 +110,11 @@ async def process_letter(ctx):
         extracted_text = result.full_text_annotation.text.replace('\n', ' ')
 
         try:
-            name_match = re.search(r"(?i)(Mrs\.?|Mr\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+\s[A-Z][a-z]+)", extracted_text)
+            name_match = re.search(r"(?i)(Mr\.?|Mrs\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+\s[A-Z][a-z]+)", extracted_text)
             if name_match:
                 full_name = name_match.group(0)
             else:
-                fallback_match = re.search(r"\b([A-Z][a-z]+\s[A-Z][a-z]+)\b", extracted_text)
+                fallback_match = re.search(r"\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b", extracted_text)
                 full_name = fallback_match.group(0) if fallback_match else "[Name Unknown]"
         except Exception:
             full_name = "[Name Unknown]"
@@ -125,9 +125,14 @@ async def process_letter(ctx):
         maxim = maxims[index % len(maxims)]
         user_case_rotation[user_id] = index + 1
 
-        trademark_clause = f"Be advised that the identifiers and designations in your correspondence, including but not limited to the name {full_name}, are protected under intellectual property rights within Classes 36 and 45. Any unauthorized reference or commercial use is strictly prohibited."
+        trademark_clause = f"Be advised that the identifiers and designations in your correspondence, including but not limited to the name {full_name}, are protected under intellectual property rights within Classes 36 and 45. Any unauthorized reference or commercial use is prohibited."
 
-        legal_title_statement = f"The legal title to the name '{full_name}' is held by the trustee. All fiduciary functions and obligations are executed in an equitable context, beyond any public presumption or statutory interpretation."
+        legal_title_statement = f"The legal title to the name '{full_name}' is held by the trustee. All fiduciary functions and liabilities are executed in private equity, not subject to public presumption or statutory interpretation."
+
+        gdpr_clause = """\nData Protection Objection  
+Under Section 17 of the Data Protection Act 2018 and Articles 6 and 21 of the UK GDPR, I hereby object to the processing, retention, or sharing of any personal identifiers, including trust-held names, without a lawful equitable basis. You are instructed to cease such processing immediately. Any further use may result in a formal data subject complaint."""
+
+        include_gdpr = any(keyword in extracted_text.lower() for keyword in ["enforcement", "parking", "fine", "collection", "bailiff", "tax", "finance", "debt"])
 
         composed_prompt = f"""Letter received:
 ---
@@ -141,7 +146,7 @@ Include the following in response:
 - Maxim: {maxim}
 - {trademark_clause}
 - {legal_title_statement}
-- Include data privacy clause if related to enforcement
+{gdpr_clause if include_gdpr else ''}
 """
 
         reply = client.chat.completions.create(
@@ -153,8 +158,7 @@ Include the following in response:
             max_tokens=1800
         )
 
-        draft = reply.choices[0].message.content
-        draft = draft.replace("*", "")
+        draft = reply.choices[0].message.content.replace("*", "")
         if len(draft) > 1900:
             filename = f"trust_letter_{datetime.utcnow().isoformat()}.txt"
             with open(filename, "w", encoding="utf-8") as f:
@@ -168,3 +172,4 @@ Include the following in response:
         print(f"Error: {e}")
 
 bot.run(DISCORD_TOKEN)
+
