@@ -3,6 +3,7 @@ import os
 from discord.ext import commands
 from openai import OpenAI
 import aiohttp
+import io
 from google.cloud import vision
 from google.oauth2 import service_account
 import json
@@ -50,7 +51,8 @@ maxims = [
     "Equity will not assist a volunteer",
     "Equity acts in personam",
     "Equity looks to intent, not form",
-    "A trustee must act in good conscience"
+    "A trustee must act in good conscience",
+    "Equity will not suffer a wrong to be without a remedy"
 ]
 
 LETTER_PROMPT_TEMPLATE = """
@@ -76,12 +78,13 @@ REPLY FORMAT:
 5. Legal Title Declaration (new)
 6. Closing maxim
 7. Cease and desist on trust property
-8. Data Protection Objection (if financial enforcement detected)
+8. Data Protection Objection (if applicable)
 
 COMMUNICATION:
 - Never mention legal terms or court systems
-- Never say \"I am an AI\"
+- Never say "I am an AI"
 - Respond as a strategist in private equity
+- Use chancery-standard clarity and equitable standing throughout
 """
 
 @bot.event
@@ -129,10 +132,9 @@ async def process_letter(ctx):
 
         legal_title_statement = f"The legal title to the name '{full_name}' is held by the trustee. All fiduciary functions and liabilities are executed in private equity, not subject to public presumption or statutory interpretation."
 
-        gdpr_clause = """\nData Protection Objection  
-Under Section 17 of the Data Protection Act 2018 and Articles 6 and 21 of the UK GDPR, I hereby object to the processing, retention, or sharing of any personal identifiers, including trust-held names, without a lawful equitable basis. You are instructed to cease such processing immediately. Any further use may result in a formal data subject complaint."""
-
-        include_gdpr = any(keyword in extracted_text.lower() for keyword in ["enforcement", "parking", "fine", "collection", "bailiff", "tax", "finance", "debt"])
+        gdpr_statement = ("Under Section 17 of the Data Protection Act 2018 and Articles 6 and 21 of the UK GDPR,"
+                          " I object to the processing, retention, or dissemination of any personal identifiers,"
+                          f" including the trust-held name {full_name}, without lawful equitable basis. Cease processing immediately.")
 
         composed_prompt = f"""Letter received:
 ---
@@ -146,7 +148,7 @@ Include the following in response:
 - Maxim: {maxim}
 - {trademark_clause}
 - {legal_title_statement}
-{gdpr_clause if include_gdpr else ''}
+- GDPR: {gdpr_statement}
 """
 
         reply = client.chat.completions.create(
@@ -172,4 +174,5 @@ Include the following in response:
         print(f"Error: {e}")
 
 bot.run(DISCORD_TOKEN)
+
 
