@@ -45,8 +45,10 @@ case_laws = [
     "Tournier v National Provincial Bank (1924) – Confidentiality in financial affairs",
     "Re Hallett’s Estate (1880) – Tracing in equity",
     "Padfield v Minister of Agriculture (1968) – Lawful exercise of discretionary power",
-    "Salomon v A Salomon & Co Ltd (1897) – Legal personality / Entity separation"
+    "Salomon v A Salomon & Co Ltd (1897) – Legal personality / Entity separation",
+    "R v City of London Magistrates’ Court (2010) – Validity of enforcement evidence"
 ]
+
 maxims = [
     "Equity will not assist a volunteer",
     "Equity acts in personam",
@@ -77,6 +79,7 @@ REPLY FORMAT:
 5. Legal Title Declaration (new)
 6. Closing maxim
 7. cease and desist on trust property
+8. Data Privacy (if civil enforcement detected)
 
 COMMUNICATION:
 - Never mention legal terms or court systems
@@ -110,11 +113,11 @@ async def process_letter(ctx):
         extracted_text = result.full_text_annotation.text.replace('\n', ' ')
 
         try:
-            name_match = re.search(r"(?i)(Mr\.?|Mrs\.?|Miss|Ms\.?|Dr\.?)\s+([A-Z][a-z]+\s[A-Z][a-z]+)", extracted_text)
+            name_match = re.search(r"(?i)(Mr\\.?|Mrs\\.?|Miss|Ms\\.?|Dr\\.?)\\s+([A-Z][a-z]+\\s[A-Z][a-z]+)", extracted_text)
             if name_match:
                 full_name = name_match.group(0)
             else:
-                fallback_match = re.search(r"\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b", extracted_text)
+                fallback_match = re.search(r"\\b([A-Z][a-z]+)\\s+([A-Z][a-z]+)\\b", extracted_text)
                 full_name = fallback_match.group(0) if fallback_match else "[Name Unknown]"
         except Exception:
             full_name = "[Name Unknown]"
@@ -129,6 +132,15 @@ async def process_letter(ctx):
 
         legal_title_statement = f"The legal title to the name '{full_name}' is held by the trustee. All fiduciary functions and liabilities are executed in private equity, not subject to public presumption or statutory interpretation."
 
+        extra_clause = ""
+        if any(keyword in extracted_text.lower() for keyword in ["pcn", "penalty charge", "ulez", "congestion", "civil enforcement", "tfl", "parking"]):
+            case_law = "Entick v Carrington (1765) – No interference with private property without lawful authority"
+            extra_clause = ("\nAdditionally, this trust property is used solely in private. No joinder has occurred with statutory systems, \
+" 
+                            "and any data captured by ANPR or enforcement agencies without consent breaches lawful use limitations \
+" 
+                            "under privacy protections and GDPR." )
+
         composed_prompt = f"""Letter received:
 ---
 {extracted_text}
@@ -141,6 +153,7 @@ Include the following in response:
 - Maxim: {maxim}
 - {trademark_clause}
 - {legal_title_statement}
+{extra_clause}
 """
 
         reply = client.chat.completions.create(
